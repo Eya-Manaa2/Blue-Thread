@@ -38,137 +38,213 @@ const ITEMS := {
 	"old_phone": {"bin": "special", "label": "Old phone", "shape": "phone", "color": Color(0.12, 0.13, 0.15), "tip": "Electronics contain metals and batteries: SPECIAL."},
 	"spray_can": {"bin": "special", "label": "Aerosol can", "shape": "spray", "color": Color(0.9, 0.3, 0.3), "tip": "Pressurised cans are hazardous: SPECIAL bin."},
 	"medicine": {"bin": "special", "label": "Expired medicine", "shape": "blister", "color": Color(0.92, 0.92, 0.96), "tip": "Medicines must never reach the sea: SPECIAL bin."},
+	"notebook_pages": {"bin": "paper", "label": "Notebook pages", "shape": "stack", "color": Color(0.97, 0.96, 0.9), "tip": "Notebook pages are clean paper: perfect for pulp."},
+	"paper_letters": {"bin": "paper", "label": "Old paper letters", "shape": "envelope", "color": Color(0.93, 0.88, 0.76), "tip": "Letters are paper fibre, ready for a second life."},
+	"knitted_hat": {"bin": "textile", "label": "Knitted hat", "shape": "hat", "color": Color(0.8, 0.3, 0.28), "tip": "A knitted hat can be unravelled into yarn."},
+	"cardigan": {"bin": "textile", "label": "Knitted cardigan", "shape": "cardigan", "color": Color(0.36, 0.52, 0.42), "tip": "A knitted cardigan gives long, reusable yarn."},
+	"leftover_yarn": {"bin": "textile", "label": "Leftover yarn", "shape": "yarn", "color": Color(0.22, 0.52, 0.92), "tip": "Leftover yarn goes straight to winding."},
+	"lemonade_bottle": {"bin": "pet", "label": "Lemonade bottle (PET)", "shape": "bottle", "color": Color(0.95, 0.92, 0.55), "tip": "Clear PET bottle: code 1, ready to recycle."},
+	"sparkling_bottle": {"bin": "pet", "label": "Sparkling water bottle (PET)", "shape": "bottle", "color": Color(0.55, 0.8, 0.95), "tip": "PET beverage bottle: code 1."},
+	"metal_can": {"bin": "none", "label": "Metal drink can", "shape": "drinkcan", "color": Color(0.78, 0.8, 0.84), "tip": "A metal can is not part of this recipe: metal goes to metal recycling, it will never become pulp, yarn or PET."},
+	"broken_toy": {"bin": "none", "label": "Broken plastic toy", "shape": "toy", "color": Color(0.95, 0.45, 0.2), "tip": "A broken toy mixes plastics and metal: it cannot enter this recipe."},
+	"plastic_container": {"bin": "none", "label": "Plastic food container", "shape": "container", "color": Color(0.95, 0.6, 0.7), "tip": "A plastic tub is not a textile: it cannot be knitted again."},
+	"glass_bottle": {"bin": "none", "label": "Glass bottle", "shape": "glassbottle", "color": Color(0.3, 0.62, 0.36), "tip": "Glass is not PET: it melts at a much higher temperature and has its own recycling."},
+	"paper_packaging": {"bin": "none", "label": "Paper packaging", "shape": "packaging", "color": Color(0.8, 0.66, 0.46), "tip": "Paper packaging is not PET: it belongs to the paper stream, not this recipe."},
 }
 
 const LEVEL_ORDER := ["gabes", "skhira", "sidi_mansour"]
 
-## Step types used by RecyclingPuzzle:
-##  scrub     : drag back and forth / in circles until the gauge is full
-##  spots     : tap every contaminant spot (count)
-##  mash      : tap fast to fill a gauge that slowly drains
-##  hold_zone : hold to raise a gauge and keep it inside the green zone (secs)
-##  timing    : press when the moving cursor is inside the green zone (count)
+## Durée de collecte par rivage (secondes) et pénalité d'un objet piège
+const COLLECT_TIME := 180.0
+const DISTRACTOR_PENALTY := 5.0
+
+## Six avatars : même équipement (masque, bouteille O2, tuyau, gants, veste, bottes),
+## même squelette et même contrôleur ; seuls peau, cheveux et foulard changent.
+const AVATARS := [
+	{"id": 0, "label": "Boy", "detail": "dark skin", "girl": false, "skin": Color(0.42, 0.27, 0.18), "hair": Color(0.07, 0.05, 0.04), "style": "short_curly"},
+	{"id": 1, "label": "Boy", "detail": "fair skin", "girl": false, "skin": Color(0.95, 0.78, 0.64), "hair": Color(0.32, 0.18, 0.08), "style": "short"},
+	{"id": 2, "label": "Girl", "detail": "red hair", "girl": true, "skin": Color(0.96, 0.80, 0.68), "hair": Color(0.62, 0.17, 0.06), "style": "long"},
+	{"id": 3, "label": "Girl", "detail": "blonde", "girl": true, "skin": Color(0.94, 0.77, 0.63), "hair": Color(0.90, 0.74, 0.40), "style": "long"},
+	{"id": 4, "label": "Girl", "detail": "hijab", "girl": true, "skin": Color(0.80, 0.58, 0.43), "hair": Color(0.12, 0.38, 0.52), "style": "hijab"},
+	{"id": 5, "label": "Girl", "detail": "curly hair", "girl": true, "skin": Color(0.66, 0.45, 0.31), "hair": Color(0.16, 0.09, 0.05), "style": "curly"},
+]
+
+## Types d'étapes de l'atelier (RecyclingPuzzle) :
+##  place     : poser chaque objet RÉELLEMENT collecté dans la zone de travail
+##  choice    : choisir le bon procédé parmi trois (explication si erreur)
+##  scrub     : frotter / tourner jusqu'à remplir la jauge
+##  spots     : toucher chaque impureté
+##  mash      : taper vite pour remplir une jauge qui redescend
+##  hold_zone : maintenir dans la zone verte (secondes)
+##  timing    : appuyer quand le curseur passe dans la zone verte
 const LEVELS := {
 	"gabes": {
-		"index": 0, "title": "GABÈS", "subtitle": "The seaside oasis", "year": "2060",
+		"index": 0, "title": "GABÈS", "subtitle": "The forgotten shore", "year": "2060",
 		"material": "paper", "material_label": "PAPER", "r_from": 0.0, "r_to": 33.0,
-		"collect": ["newspaper", "cardboard_box", "paper_bag", "magazine", "office_paper"],
-		"sort": ["egg_carton", "tshirt", "water_bottle", "chip_bag", "battery", "greasy_pizza_box", "newspaper", "socks"],
+		"collect": ["newspaper", "notebook_pages", "paper_bag", "cardboard_box", "paper_letters"],
+		"distractors": ["water_bottle", "metal_can", "broken_toy"],
+		"sort": ["egg_carton", "tshirt", "soda_bottle", "chip_bag", "battery", "greasy_pizza_box", "magazine", "socks"],
 		"steps": [
-			{"id": "pulp", "title": "PULP", "verb": "Stir the pulp", "type": "scrub", "goal": 1.0,
+			{"id": "prepare", "title": "PREPARE", "verb": "Place each recovered paper in the work zone", "type": "place", "goal": 5,
+			 "from": Color(0.60, 0.52, 0.40), "to": Color(0.78, 0.72, 0.62),
+			 "hint": "Tap each item you recovered.", "why": "Only clean, dry paper can be recycled: the wrong materials would spoil the whole batch.", "done": "All your paper is in the vat."},
+			{"id": "pulp", "title": "PULPING", "verb": "Stir the vat to make pulp", "type": "scrub", "goal": 1.0,
 			 "from": Color(0.55, 0.47, 0.36), "to": Color(0.82, 0.78, 0.70),
-			 "hint": "Drag in circles inside the vat: water breaks the paper into fibres."},
-			{"id": "deink", "title": "CLEAN & DE-INK", "verb": "Pop the ink bubbles", "type": "spots", "goal": 7,
+			 "hint": "Drag in circles inside the vat.", "why": "Water and mechanical mixing separate the cellulose fibres so they can bond again.", "done": "Fibres freed: smooth pulp!"},
+			{"id": "deink", "title": "CLEAN & DE-INK", "verb": "Choose the right cleaning process", "type": "choice", "goal": 1,
 			 "from": Color(0.70, 0.68, 0.62), "to": Color(0.95, 0.94, 0.90),
-			 "hint": "Air bubbles lift the ink to the surface. Tap every dark bubble."},
-			{"id": "roll", "title": "DRY & ROLL", "verb": "Press the rollers", "type": "timing", "goal": 3,
+			 "options": [["Air-bubble flotation lifts the ink, screens catch staples and tape", true, "Right: bubbles carry the ink to the surface and screens remove contaminants."],
+				["Pour strong bleach on everything", false, "Too harsh: it pollutes the water and weakens the fibres."],
+				["Burn the ink away", false, "Burning destroys the paper fibres and pollutes the air."]],
+			 "hint": "Tap the process you think is right.", "why": "Removing contaminants (and ink when a white paper grade is needed) gives a clean pulp.", "done": "Clean, light pulp."},
+			{"id": "form", "title": "FORM, PRESS & DRY", "verb": "Press the sheet at the right moment", "type": "timing", "goal": 3,
 			 "from": Color(0.90, 0.88, 0.82), "to": Color(0.98, 0.97, 0.94),
-			 "hint": "Press when the cursor crosses the green zone to squeeze and dry the sheet."},
+			 "hint": "Press when the cursor crosses the green zone.", "why": "Pressing and drying squeeze out the water: the fibres lock into new sheets, then they are rolled and cut.", "done": "New sheets for a notebook!"},
 		],
-		"reward": "notebook", "reward_label": "A recycled notebook",
+		"reward": "notebook", "reward_label": "A recycled notebook for Mima's memories",
 		"fact": "Recycling one tonne of paper saves about 17 trees and roughly 26,000 litres of water.",
 		"intro": [
-			["MIMA", "Yassine, can you hear me? The radio crackles... Gabès was the only oasis in the world that touched the sea."],
-			["MIMA", "Find five pieces of PAPER on the shore. Paper can be born again."],
-			["YASSINE", "Five papers, then the sorting station. Got it, Mima."],
-			["MIMA", "Watch your air. The O2 tanks with the blue light will refill your cylinder."],
+			["MIMA", "{name}, can you hear me? The radio crackles... Gabès was the only oasis in the world that touched the sea."],
+			["MIMA", "Bring back five pieces of PAPER: newspaper, notebook pages, a paper bag, cardboard and old letters."],
+			["MIMA", "Careful: not everything on the shore belongs to the recipe. A wrong object wastes 5 seconds."],
+			["PLAYER", "Five papers, then the sorting station. Got it, Mima."],
+			["MIMA", "Watch your air: it drains one unit every second. The O2 stations with the blue light will refill you."],
 		],
 		"to_station": [["MIMA", "Five! Now go to the five bins. Someone dumped a mixed pile there: sort it right."]],
-		"to_puzzle": [["MIMA", "Good. Now the old paper mill: let's turn your five papers into something new."]],
-		"outro": [["MIMA", "A notebook! I will write in it the names of every fish that comes back."]],
+		"to_puzzle": [["MIMA", "Good. Now come to the workbench, my child."]],
+		"outro": [["PLAYER", "Mima... I think I can finally see a little blue."], ["MIMA", "A notebook! I will write in it the names of every fish that comes back."]],
 		"matte": "res://assets/ui/matte_gabes.png",
 	},
 	"skhira": {
-		"index": 1, "title": "SKHIRA", "subtitle": "The port of lost clothes", "year": "2060",
+		"index": 1, "title": "SKHIRA", "subtitle": "Threads of hope", "year": "2060",
 		"material": "textile", "material_label": "TEXTILE", "r_from": 33.0, "r_to": 67.0,
-		"collect": ["tshirt", "wool_sweater", "jeans", "scarf", "socks"],
-		"sort": ["bed_sheet", "magazine", "soda_bottle", "cigarette_butt", "paint_can", "dirty_tissue", "jeans", "pet_tray"],
+		"collect": ["wool_sweater", "scarf", "knitted_hat", "cardigan", "leftover_yarn"],
+		"distractors": ["plastic_container", "broken_mug", "metal_can"],
+		"sort": ["bed_sheet", "office_paper", "pet_tray", "cigarette_butt", "paint_can", "dirty_tissue", "jeans", "old_phone"],
 		"steps": [
-			{"id": "inspect", "title": "INSPECT & CLEAN", "verb": "Remove buttons, zips and stains", "type": "spots", "goal": 6,
-			 "from": Color(0.36, 0.30, 0.40), "to": Color(0.42, 0.52, 0.80),
-			 "hint": "Hard parts damage the machines. Tap every button, zip and stain."},
-			{"id": "unravel", "title": "UNRAVEL", "verb": "Pull the thread gently", "type": "hold_zone", "goal": 3.0,
+			{"id": "inventory", "title": "INVENTORY", "verb": "Lay out each recovered textile", "type": "place", "goal": 5,
+			 "from": Color(0.36, 0.30, 0.40), "to": Color(0.42, 0.46, 0.72),
+			 "hint": "Tap each item you recovered.", "why": "Knowing each piece tells us what can be unravelled and what must go to fibre recycling.", "done": "Everything is on the table."},
+			{"id": "inspect", "title": "CLEAN & REMOVE FASTENERS", "verb": "Remove buttons, zips and stains", "type": "spots", "goal": 6,
+			 "from": Color(0.38, 0.40, 0.62), "to": Color(0.42, 0.52, 0.80),
+			 "hint": "Tap every button, zip and stain.", "why": "Hard parts and dirt would break the machines and spoil the yarn.", "done": "Clean and ready."},
+			{"id": "unravel", "title": "UNRAVEL KNITTED PIECES", "verb": "Pull the thread gently", "type": "hold_zone", "goal": 3.0,
 			 "from": Color(0.40, 0.48, 0.78), "to": Color(0.28, 0.56, 0.92),
-			 "hint": "Hold to pull. Keep the tension in the green zone or the thread snaps."},
-			{"id": "wind", "title": "WIND THE YARN", "verb": "Wind the yarn ball", "type": "scrub", "goal": 1.0,
+			 "hint": "Hold to pull; keep the tension in the green zone. Only KNITTED pieces can be unravelled - woven fabrics are shredded into fibre instead.", "why": "Unravelling keeps the yarn long and strong enough to knit again.", "done": "Yarn recovered!"},
+			{"id": "wind", "title": "WIND THE YARN", "verb": "Wind the yarn into balls", "type": "scrub", "goal": 1.0,
 			 "from": Color(0.26, 0.54, 0.90), "to": Color(0.20, 0.62, 0.98),
-			 "hint": "Drag in circles to wind the recovered yarn into a ball."},
-			{"id": "knit", "title": "KNIT", "verb": "Knit stitch by stitch", "type": "timing", "goal": 4,
+			 "hint": "Drag in circles.", "why": "Organised balls of yarn avoid knots and waste.", "done": "Neat blue balls of yarn."},
+			{"id": "knit", "title": "KNIT A NEW SWEATER", "verb": "Knit stitch by stitch", "type": "timing", "goal": 4,
 			 "from": Color(0.20, 0.60, 0.96), "to": Color(0.16, 0.66, 1.0),
-			 "hint": "Press when the needles cross in the green zone. Just like Mima."},
+			 "hint": "Press when the needles cross in the green zone.", "why": "New stitches turn old yarn into a garment that will last for years.", "done": "A sweater, blue like the sea!"},
 		],
-		"reward": "sweater", "reward_label": "A blue knitted sweater",
+		"reward": "sweater", "reward_label": "A blue knitted sweater for Mima",
 		"fact": "Making a single cotton T-shirt can use about 2,700 litres of water. Re-using fibres saves it.",
 		"intro": [
 			["MIMA", "Skhira's port. Boats once carried sponges and fish. Now the tide brings old clothes."],
-			["MIMA", "Bring me five pieces of TEXTILE. Every thread can be unravelled and knitted again."],
-			["YASSINE", "Like the blue thread you always keep in your pocket?"],
-			["MIMA", "Exactly like that one. Go, my boy. Mind your air."],
+			["MIMA", "Bring me five knitted pieces: a sweater, a scarf, a hat, a cardigan and leftover yarn."],
+			["PLAYER", "Like the blue thread you gave me?"],
+			["MIMA", "Exactly like that one. Mind your air, and leave what is not textile."],
 		],
 		"to_station": [["MIMA", "Five pieces! The bins are waiting. Careful, not everything soft is textile."]],
-		"to_puzzle": [["MIMA", "Now my favourite part: unravel, wind, knit."]],
-		"outro": [["MIMA", "A sweater as blue as the sea of my childhood..."]],
+		"to_puzzle": [["MIMA", "Now my favourite part. Come to the workbench."]],
+		"outro": [["PLAYER", "You were right, Mima. Even something forgotten can become beautiful again."], ["MIMA", "A sweater as blue as the sea of my childhood..."]],
 		"matte": "res://assets/ui/matte_skhira.png",
 	},
 	"sidi_mansour": {
-		"index": 2, "title": "SIDI MANSOUR", "subtitle": "The beach of bottles, Sfax", "year": "2060",
+		"index": 2, "title": "SIDI MANSOUR", "subtitle": "The return of blue", "year": "2060",
 		"material": "pet", "material_label": "PET", "r_from": 67.0, "r_to": 100.0,
-		"collect": ["water_bottle", "soda_bottle", "juice_bottle", "pet_tray", "pet_jar"],
-		"sort": ["office_paper", "scarf", "broken_mug", "old_phone", "spray_can", "medicine", "water_bottle", "cardboard_box"],
+		"collect": ["water_bottle", "soda_bottle", "juice_bottle", "lemonade_bottle", "sparkling_bottle"],
+		"distractors": ["glass_bottle", "metal_can", "paper_packaging"],
+		"sort": ["newspaper", "scarf", "broken_mug", "battery", "spray_can", "medicine", "pet_jar", "cardboard_box"],
 		"steps": [
-			{"id": "clean", "title": "SORT & CLEAN", "verb": "Remove caps and labels", "type": "spots", "goal": 6,
-			 "from": Color(0.50, 0.62, 0.58), "to": Color(0.70, 0.88, 0.96),
-			 "hint": "Caps and labels are other plastics. Tap each one to take it off."},
-			{"id": "grind", "title": "GRIND", "verb": "Grind into flakes", "type": "mash", "goal": 1.0,
+			{"id": "identify", "title": "IDENTIFY PET", "verb": "Check each of your five PET bottles", "type": "place", "goal": 5,
+			 "from": Color(0.50, 0.62, 0.58), "to": Color(0.62, 0.80, 0.86),
+			 "hint": "Tap each bottle you recovered.", "why": "PET (code 1) must be kept apart: mixed plastics cannot be recycled together.", "done": "Five PET bottles confirmed."},
+			{"id": "clean", "title": "PREPARE & CLEAN", "verb": "Remove caps and labels", "type": "spots", "goal": 6,
+			 "from": Color(0.56, 0.70, 0.70), "to": Color(0.70, 0.88, 0.96),
+			 "hint": "Tap each cap and label.", "why": "Caps and labels are other plastics: left on, they lower the quality of the new PET.", "done": "Clean, bare bottles."},
+			{"id": "grind", "title": "GRIND", "verb": "Grind into small flakes", "type": "mash", "goal": 1.0,
 			 "from": Color(0.70, 0.86, 0.94), "to": Color(0.74, 0.90, 0.98),
-			 "hint": "Tap fast to feed the grinder before it slows down."},
+			 "hint": "Tap fast to feed the grinder.", "why": "Small flakes wash better and melt evenly.", "done": "A pile of clear flakes."},
 			{"id": "wash", "title": "WASH", "verb": "Scrub the flakes", "type": "scrub", "goal": 1.0,
 			 "from": Color(0.62, 0.74, 0.70), "to": Color(0.82, 0.95, 1.0),
-			 "hint": "Drag back and forth to wash away sand, oil and glue."},
+			 "hint": "Drag back and forth.", "why": "Sand, oil and glue would weaken the recycled plastic.", "done": "Sparkling clean flakes."},
 			{"id": "dry", "title": "DRY", "verb": "Keep the dryer at the right heat", "type": "hold_zone", "goal": 2.5,
 			 "from": Color(0.80, 0.92, 0.98), "to": Color(0.86, 0.96, 1.0),
-			 "hint": "Hold to heat. Stay in the green zone: too hot and the flakes yellow."},
-			{"id": "extrude", "title": "MELT & EXTRUDE", "verb": "Extrude the filament", "type": "timing", "goal": 3,
+			 "hint": "Hold to heat; stay in the green zone.", "why": "Moisture makes melted PET brittle and full of bubbles.", "done": "Dry flakes."},
+			{"id": "extrude", "title": "MELT & EXTRUDE (FACTORY)", "verb": "Extrude the filament", "type": "timing", "goal": 3,
 			 "from": Color(0.86, 0.96, 1.0), "to": Color(0.36, 0.78, 0.96),
-			 "hint": "Press in the green zone to push molten PET through the nozzle."},
+			 "hint": "Educational simulation of an industrial machine - never heat plastic at home. Press in the green zone.", "why": "In the recycling plant, molten PET is pushed through a nozzle into a strong filament.", "done": "A long recycled filament."},
 			{"id": "form", "title": "FORM", "verb": "Press the mould", "type": "mash", "goal": 1.0,
 			 "from": Color(0.36, 0.78, 0.96), "to": Color(0.20, 0.70, 0.62),
-			 "hint": "Tap to press the mould: the filament becomes a planter."},
+			 "hint": "Tap to press the mould.", "why": "The filament becomes a useful object that helps the shore heal.", "done": "A dune-grass planter for the beach!"},
 		],
-		"reward": "planter", "reward_label": "A planter for an olive tree",
+		"reward": "planter", "reward_label": "A recycled-PET planter that anchors dune grass on the shore",
 		"fact": "A plastic bottle can last for centuries in the sea. Recycled PET becomes fibre, trays or new bottles.",
 		"intro": [
 			["MIMA", "Sidi Mansour, near Sfax. The fishermen's boats sleep on a carpet of bottles."],
-			["MIMA", "Five PET objects, Yassine. Bottles, trays, jars. Clear plastic with the number 1."],
-			["YASSINE", "The air is better here already. I can see the sea moving."],
+			["MIMA", "Five PET beverage bottles, {name}. Clear plastic with the number 1. Glass, cans and paper are not for this recipe."],
+			["PLAYER", "The air is better here already. I can see the sea moving."],
 			["MIMA", "Then finish it. The last blue is waiting for you."],
 		],
 		"to_station": [["MIMA", "Last station. Sort it like a guardian."]],
-		"to_puzzle": [["MIMA", "Clean, grind, wash, dry, melt, form. Six steps for one new life."]],
-		"outro": [["MIMA", "A planter! We will put an olive tree in it, on the terrace."]],
+		"to_puzzle": [["MIMA", "Clean, grind, wash, dry, melt, form. Seven steps for one new life."]],
+		"outro": [["MIMA", "A planter for the dune grass! The sand will stay, and the plants will hold the shore."]],
 		"matte": "res://assets/ui/matte_sidi.png",
 	},
 }
 
+const WORKBENCH_LINE := "Here's what you recovered. Now let's give these materials a second life."
+const DEATH_LINE := "Mima... I have failed you."
+
 const ENDING := [
-	["MIMA", "You came back... Look, Yassine. Look at the sea."],
-	["YASSINE", "It's blue, Mima. Blue like your stories. I can take off my mask."],
-	["MIMA", "It was not magic. A notebook, a sweater, a planter... and a boy who sorted, one object at a time."],
-	["MIMA", "This is the last blue thread I kept. Now it is yours. Never let it break."],
+	["MIMA", "Oh, my child... I remember this blue."],
+	["PLAYER", "I kept my promise, Mima."],
+	["MIMA", "And you gave the world a reason to hope again."],
+]
+const FINAL_CARD := "One promise. Three shores. A future to restore."
+
+## Intro : scènes illustrées (images de référence), une réplique à la fois.
+const INTRO_SCENES := [
+	{"image": "res://assets/story/story_coast.jpg", "lines": [
+		["NARRATOR", "In 2060, the sea had forgotten its color."],
+		["NARRATOR", "The air was no longer safe, and the shores were buried beneath everything we had thrown away."]]},
+	{"image": "res://assets/story/story_room.jpg", "lines": [
+		["PLAYER", "Mima? I'm home."],
+		["MIMA", "Come here, my child. Sit beside me."],
+		["MIMA", "Do you know that the sea wasn't always like this?"],
+		["PLAYER", "What do you mean, Mima?"]]},
+	{"image": "res://assets/story/story_hope.jpg", "lines": [
+		["MIMA", "When I was young, the sea was blue. So blue that you could almost see the sky inside it."],
+		["MIMA", "There were fish beneath the waves, birds above the water, and children laughing along the shore."],
+		["PLAYER", "Was it really that beautiful?"],
+		["MIMA", "More beautiful than I can describe. Sometimes I close my eyes just to remember its color."]]},
+	{"image": "res://assets/story/story_thread.jpg", "lines": [
+		["MIMA", "Look at this little thread. It reminds me of the sea we once knew."],
+		["PLAYER", "It's beautiful, Mima."],
+		["MIMA", "I kept it because I was afraid the world would forget what blue looked like. I have only one wish left... to see our blue sea again."]]},
+	{"image": "res://assets/story/story_promise.jpg", "lines": [
+		["PLAYER", "Then I'll bring it back."],
+		["MIMA", "My child, the sea is so big..."],
+		["PLAYER", "Then I'll start with one piece of waste. And then another. I promise you, Mima. One day, you'll see the blue again."]]},
+	{"image": "res://assets/story/story_promise.jpg", "title": true, "lines": [
+		["TITLE", "BLUE THREAD - THE LAST BLUE"],
+		["TITLE", "Every thread is a beginning."]]},
 ]
 
-const INTRO_SLIDES := [
-	{"image": "res://assets/intro/slide_02.jpg", "text": "Gulf of Gabès, Tunisia. 2060.", "sub": "The sea turned brown. The sky forgot its colour."},
-	{"image": "res://assets/intro/slide_03.jpg", "text": "Yassine is twelve.", "sub": "He breathes through a mask, with an oxygen cylinder on his back."},
-	{"image": "res://assets/intro/slide_01.jpg", "text": "His grandmother Mima remembers.", "sub": "\"When I was your age, the sea was blue. Really blue.\""},
-	{"image": "res://assets/intro/slide_04.jpg", "text": "Five bins. One rule.", "sub": "Nothing is waste if it is sorted and given a new life."},
-	{"image": "res://assets/intro/slide_05.jpg", "text": "Three shores. Three materials.", "sub": "One last blue thread to save."},
-]
+## Cartes de chapitre (transition de 3-4 s entre les rivages)
+const CHAPTERS := {
+	"gabes": {"image": "res://assets/story/story_outside.jpg", "kicker": "CHAPTER 1", "achievement": "The promise begins."},
+	"skhira": {"image": "res://assets/story/chapter_skhira.jpg", "kicker": "CHAPTER 2", "achievement": "Gabès restored to 33% - the water starts to turn blue."},
+	"sidi_mansour": {"image": "res://assets/story/chapter_sidi.jpg", "kicker": "CHAPTER 3", "achievement": "Skhira restored to 67% - plants are coming back."},
+	"ending": {"image": "res://assets/story/story_hope.jpg", "kicker": "EPILOGUE", "achievement": "Sidi Mansour restored - the story reaches 100%."},
+}
 
 const REWARDS := {
 	"notebook": {"label": "Recycled notebook", "color": Color(0.30, 0.55, 0.85)},
 	"sweater": {"label": "Blue knitted sweater", "color": Color(0.18, 0.48, 0.92)},
-	"planter": {"label": "PET planter", "color": Color(0.20, 0.70, 0.62)},
+	"planter": {"label": "Dune-grass planter", "color": Color(0.20, 0.70, 0.62)},
 }
 
 
@@ -178,3 +254,9 @@ static func item(id: String) -> Dictionary:
 
 static func level(id: String) -> Dictionary:
 	return LEVELS.get(id, {})
+
+
+static func avatar(id: int) -> Dictionary:
+	if id < 0 or id >= AVATARS.size():
+		return AVATARS[1]
+	return AVATARS[id]

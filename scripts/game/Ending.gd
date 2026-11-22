@@ -1,7 +1,12 @@
 extends Node3D
 ## Fin : Gabès restaurée à 100 %, terrasse blanche aux portes bleues.
-## Yassine rejoint Mima, retire son masque, offre le cahier, le pull et la
-## jardinière ; Mima lui confie le dernier fil bleu. Puis statistiques et rejouer.
+## Le gardien (l'avatar choisi) rejoint Mima en personne, retire son masque,
+## offre le cahier, le pull et la jardinière, puis :
+##   MIMA « Oh, my child... I remember this blue. »
+##   JOUEUR « I kept my promise, Mima. »
+##   MIMA « And you gave the world a reason to hope again. »
+## Mima confie le dernier fil bleu ; carte finale
+## « One promise. Three shores. A future to restore. » ; statistiques.
 
 signal play_again
 signal to_menu
@@ -77,6 +82,7 @@ func _ready() -> void:
 	cam.look_at(_base + Vector3(-0.5, 1.2, -1.0))
 
 	dialog = DialogScript.new()
+	dialog.radio_mode = false     # Mima est là, en personne
 	add_child(dialog)
 
 	var fade := CanvasLayer.new()
@@ -107,7 +113,7 @@ func _process(delta: float) -> void:
 			boy.visual.rotation.y = PI * 0.5
 			var tw := create_tween()
 			tw.tween_interval(0.6)
-			tw.tween_callback(func(): dialog.show_lines([GameData.ENDING[0], GameData.ENDING[1]], _mask_off))
+			tw.tween_callback(_mask_off)
 	var target := _base + Vector3(2.5 - sin(_t * 0.08) * 1.2, 2.2, 8.0 - _t * 0.04)
 	cam.global_position = cam.global_position.lerp(target, 1.0 - exp(-1.5 * delta))
 	cam.look_at(_base + Vector3(-0.6, 1.2, -1.0))
@@ -130,7 +136,7 @@ func _mask_off() -> void:
 		tw.tween_property(g, "global_position", dest, 0.6).set_trans(Tween.TRANS_SINE)
 	var tw2 := create_tween()
 	tw2.tween_interval(3.2)
-	tw2.tween_callback(func(): dialog.show_lines([GameData.ENDING[2], GameData.ENDING[3]], _give_thread))
+	tw2.tween_callback(func(): dialog.show_lines(GameData.ENDING, _give_thread))
 
 
 func _give_thread() -> void:
@@ -143,7 +149,47 @@ func _give_thread() -> void:
 		sfx.milestone()
 	var tw := create_tween()
 	tw.tween_interval(2.5)
-	tw.tween_callback(_show_stats)
+	tw.tween_callback(_final_card)
+
+
+## Carte finale, plein écran, ~4 s (clic pour passer)
+func _final_card() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	var root := UiKit.full_rect(Control.new())
+	root.theme = UiKit.theme()
+	layer.add_child(root)
+	var bg := UiKit.full_rect(ColorRect.new()) as ColorRect
+	bg.color = Color(0.01, 0.03, 0.06, 0.0)
+	root.add_child(bg)
+	var v := UiKit.vbox(16)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	UiKit.place(v, Vector2(0.5, 0.5), Vector2.ZERO, 0, 0)
+	root.add_child(v)
+	var logo := UiKit.tex("res://assets/ui/logo_official.png", Vector2(460, 210))
+	v.add_child(logo)
+	var l := UiKit.label(GameData.FINAL_CARD, 34, UiKit.PAPER, "black", 6)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(l)
+	v.modulate.a = 0.0
+	var done := [false]
+	var close := func():
+		if done[0]:
+			return
+		done[0] = true
+		var t2 := create_tween()
+		t2.tween_property(root, "modulate:a", 0.0, 0.8)
+		t2.tween_callback(layer.queue_free)
+		t2.tween_callback(_show_stats)
+	bg.gui_input.connect(func(e: InputEvent):
+		if e is InputEventMouseButton and e.pressed:
+			close.call())
+	var tw := create_tween()
+	tw.tween_property(bg, "color:a", 0.92, 1.0)
+	tw.tween_property(v, "modulate:a", 1.0, 0.8)
+	tw.tween_interval(3.2)
+	tw.tween_callback(close)
 
 
 func _show_stats() -> void:

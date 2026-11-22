@@ -4,6 +4,7 @@ extends CanvasLayer
 ## Chaque étape réussie = +15 points (GameState.step_done).
 
 signal step_completed(step_id: String)
+signal item_placed(index: int)
 signal finished
 
 const MACHINES := {"gabes": "OLD PAPER MILL  ·  GABÈS", "skhira": "FIBRE WORKSHOP  ·  SKHIRA", "sidi_mansour": "PET LAB  ·  SFAX"}
@@ -24,6 +25,8 @@ var _hint: Label
 var _stage: Stage
 var _status: Label
 var _stamp: Label
+var _why: Label
+var items: Array = []          # objets réellement collectés (ids)
 
 
 class Stage extends Control:
@@ -55,6 +58,9 @@ class Stage extends Control:
 	var _shake: float = 0.0
 	var _rng := RandomNumberGenerator.new()
 	var _flakes: Array = []
+	var _cards: Array = []       # étape "place" : [label, rect, placed, anim]
+	var _options: Array = []     # étape "choice" : [texte, correct, explication, rect, state]
+	var _font: Font
 
 	func setup(step: Dictionary, is_demo: bool) -> void:
 		type = String(step.type)
@@ -74,6 +80,18 @@ class Stage extends Control:
 		_rng.randomize()
 		_zone = _rng.randf_range(0.25, 0.75)
 		_spots.clear()
+		_cards.clear()
+		_options.clear()
+		_font = UiKit.font("bold")
+		if type == "place":
+			var labels: Array = owner_p.item_labels()
+			goal = float(maxi(1, labels.size()))
+			for i in labels.size():
+				_cards.append({"label": String(labels[i]), "placed": false, "t": 0.0})
+		elif type == "choice":
+			for o in step.get("options", []):
+				_options.append({"text": String(o[0]), "ok": bool(o[1]), "why": String(o[2]), "state": 0})
+			_options.shuffle()
 		if type == "spots":
 			var n: int = int(goal)
 			if demo:
@@ -133,6 +151,10 @@ class Stage extends Control:
 			_last = mb.position
 			if type == "spots" and mb.pressed:
 				_tap_spot(mb.position)
+			elif type == "place" and mb.pressed:
+				_tap_card(mb.position)
+			elif type == "choice" and mb.pressed:
+				_tap_option(mb.position)
 			elif type in ["mash", "hold_zone", "timing"]:
 				press(mb.pressed)
 			accept_event()
@@ -162,7 +184,56 @@ class Stage extends Control:
 				_check()
 				return
 
+	func _card_rect(i: int) -> Rect2:
+		var n: int = maxi(1, _cards.size())
+		var w: float = minf(150.0, (size.x - 40.0) / float(n) - 10.0)
+		var x0: float = (size.x - (w + 10.0) * n + 10.0) * 0.5
+		return Rect2(Vector2(x0 + i * (w + 10.0), size.y * 0.12), Vector2(w, 84))
+
+	func _tap_card(p: Vector2) -> void:
+		for i in _cards.size():
+			var c: Dictionary = _cards[i]
+			if not c.placed and _card_rect(i).has_point(p):
+				c.placed = true
+				c.t = 1.0
+				owner_p.item_placed.emit(i)
+				if owner_p.sfx != null:
+					owner_p.sfx.pickup()
+				var n_placed := 0
+				for c2 in _cards:
+					if c2.placed:
+						n_placed += 1
+				progress = float(n_placed) / float(_cards.size())
+				_check()
+				return
+
+	func _option_rect(i: int) -> Rect2:
+		return Rect2(Vector2(20, size.y * 0.1 + i * (size.y * 0.27)), Vector2(size.x - 40, size.y * 0.22))
+
+	func _tap_option(p: Vector2) -> void:
+		for i in _options.size():
+			var o: Dictionary = _options[i]
+			if _option_rect(i).has_point(p) and o.state == 0:
+				owner_p.show_explanation(String(o.why), bool(o.ok))
+				if bool(o.ok):
+					o.state = 1
+					progress = 1.0
+					if owner_p.sfx != null:
+						owner_p.sfx.good(1, "paper")
+					_check()
+				else:
+					o.state = 2
+					_flash = 1.0
+					_flash_col = Color(1.0, 0.3, 0.3)
+					_shake = 0.3
+					if owner_p.sfx != null:
+						owner_p.sfx.bad()
+				return
+
 	func complete_now() -> void:
+		for c in _cards:
+			if not c.placed:
+				c.placed = true
 		progress = 1.0
 		for s in _spots:
 			s.alive = false
@@ -186,6 +257,8 @@ class Stage extends Control:
 		_flakes = _flakes.filter(func(f): return f[2] < 0.9)
 		for s in _spots:
 			s.pop = maxf(0.0, s.pop - delta * 3.0)
+		for c in _cards:
+			c.t = maxf(0.0, float(c.t) - delta * 2.0)
 		if not done:
 			match type:
 				"mash":
@@ -221,6 +294,37 @@ class Stage extends Control:
 		var mat: Color = c_from.lerp(c_to, progress)
 		draw_style_box(_sb(Color(0.0, 0.0, 0.0, 0.25), 22), Rect2(Vector2.ZERO, size))
 		match type:
+			"place":
+				var zone := Rect2(Vector2(size.x * 0.15, size.y * 0.55), Vector2(size.x * 0.7, size.y * 0.36))
+				draw_style_box(_sb(Color(0.1, 0.12, 0.14, 0.9), 18), zone)
+				draw_style_box(_sb(mat.darkened(0.2), 14), Rect2(zone.position + Vector2(10, zone.size.y * (1.0 - progress * 0.8) - 10), Vector2(zone.size.x - 20, zone.size.y * progress * 0.8)))
+				draw_string(_font, zone.position + Vector2(0, zone.size.y + 26), "WORK ZONE", HORIZONTAL_ALIGNMENT_CENTER, zone.size.x, 16, Color(1, 1, 1, 0.6))
+				for i in _cards.size():
+					var cd: Dictionary = _cards[i]
+					var rc := _card_rect(i)
+					if cd.placed:
+						var t: float = float(cd.t)
+						if t > 0.0:
+							var target := zone.get_center() - rc.size * 0.5
+							rc.position = target.lerp(rc.position, t)
+							draw_style_box(_sb(Color(0.3, 1.0, 0.5, t * 0.8), 12), rc)
+						continue
+					var pulse: float = 0.5 + 0.5 * sin(t * 4.0 + i)
+					draw_style_box(_sb(Color(0.95, 0.95, 0.92, 0.95), 12), rc)
+					draw_style_box(_sb(Color(c_to.r, c_to.g, c_to.b, 0.25 + 0.2 * pulse), 12), Rect2(rc.position, Vector2(rc.size.x, 8)))
+					draw_string(_font, rc.position + Vector2(6, 38), String(cd.label), HORIZONTAL_ALIGNMENT_CENTER, rc.size.x - 12, 14, Color(0.1, 0.12, 0.15))
+					draw_string(_font, rc.position + Vector2(6, 70), "TAP", HORIZONTAL_ALIGNMENT_CENTER, rc.size.x - 12, 12, Color(0.2, 0.45, 0.7))
+			"choice":
+				for i in _options.size():
+					var o: Dictionary = _options[i]
+					var rc2 := _option_rect(i)
+					var col := Color(0.12, 0.16, 0.2, 0.95)
+					if o.state == 1:
+						col = Color(0.15, 0.55, 0.32, 0.95)
+					elif o.state == 2:
+						col = Color(0.5, 0.14, 0.14, 0.95)
+					draw_style_box(_sb(col, 16), rc2)
+					draw_string(_font, rc2.position + Vector2(16, rc2.size.y * 0.5 + 6), String(o.text), HORIZONTAL_ALIGNMENT_LEFT, rc2.size.x - 32, 16, Color(1, 1, 1))
 			"scrub":
 				draw_circle(c, r + 14.0, Color(0.16, 0.18, 0.2))
 				draw_circle(c, r, mat.darkened(0.15))
@@ -348,54 +452,66 @@ func _ready() -> void:
 	_root = UiKit.full_rect(Control.new())
 	_root.theme = UiKit.theme()
 	add_child(_root)
+	# léger voile : l'établi et les objets restent visibles à gauche
 	var dim := UiKit.full_rect(ColorRect.new()) as ColorRect
-	dim.color = Color(0.0, 0.02, 0.04, 0.6)
+	dim.color = Color(0.0, 0.02, 0.04, 0.22)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(dim)
-	_panel = UiKit.panel(Color(0.03, 0.06, 0.09, 0.94), 26, Color(0.4, 0.8, 1.0, 0.3))
-	_panel.custom_minimum_size = Vector2(1000, 620)
-	UiKit.place(_panel, Vector2(0.5, 0.5), Vector2.ZERO, 0, 0)
+	_panel = UiKit.panel(Color(0.03, 0.06, 0.09, 0.93), 26, Color(0.4, 0.8, 1.0, 0.3))
+	_panel.custom_minimum_size = Vector2(720, 0)
+	UiKit.place(_panel, Vector2(1, 0.5), Vector2(-20, 10), -1, 0)
 	_root.add_child(_panel)
-	var v := UiKit.vbox(8)
+	var v := UiKit.vbox(6)
 	_panel.add_child(v)
-	_machine = UiKit.label("", 15, UiKit.MUTED, "black")
+	_machine = UiKit.label("", 14, UiKit.MUTED, "black")
 	v.add_child(_machine)
-	_chips = UiKit.hbox(8)
+	_chips = UiKit.hbox(6)
 	v.add_child(_chips)
-	var h := UiKit.hbox(24)
-	h.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	v.add_child(h)
-	var left := UiKit.vbox(10)
-	left.custom_minimum_size = Vector2(300, 0)
-	h.add_child(left)
-	_title = UiKit.label("", 40, UiKit.PAPER, "black")
-	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_title.custom_minimum_size = Vector2(300, 0)
-	left.add_child(_title)
-	_verb = UiKit.label("", 22, UiKit.TEAL, "bold")
+	_title = UiKit.label("", 30, UiKit.PAPER, "black")
+	v.add_child(_title)
+	_verb = UiKit.label("", 19, UiKit.TEAL, "bold")
 	_verb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_verb.custom_minimum_size = Vector2(300, 0)
-	left.add_child(_verb)
-	_hint = UiKit.label("", 18, UiKit.MUTED, "regular")
-	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_hint.custom_minimum_size = Vector2(300, 0)
-	left.add_child(_hint)
-	_status = UiKit.label("", 16, Color(1.0, 0.86, 0.4), "bold")
-	left.add_child(_status)
+	_verb.custom_minimum_size = Vector2(680, 0)
+	v.add_child(_verb)
+	_why = UiKit.label("", 15, Color(1.0, 0.86, 0.5), "regular")
+	_why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_why.custom_minimum_size = Vector2(680, 0)
+	v.add_child(_why)
 	_stage = Stage.new()
 	_stage.owner_p = self
-	_stage.custom_minimum_size = Vector2(620, 480)
-	_stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_stage.custom_minimum_size = Vector2(680, 330)
 	_stage.mouse_filter = Control.MOUSE_FILTER_STOP
-	h.add_child(_stage)
-	_stamp = UiKit.label("STEP COMPLETE  +15", 46, UiKit.GOOD, "black", 8)
-	UiKit.place(_stamp, Vector2(0.5, 0.5), Vector2.ZERO, 0, 0)
+	v.add_child(_stage)
+	_hint = UiKit.label("", 14, UiKit.MUTED, "regular")
+	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hint.custom_minimum_size = Vector2(680, 0)
+	v.add_child(_hint)
+	_status = UiKit.label("", 14, Color(1.0, 0.86, 0.4), "bold")
+	v.add_child(_status)
+	_stamp = UiKit.label("STEP COMPLETE  +15", 34, UiKit.GOOD, "black", 8)
+	UiKit.place(_stamp, Vector2(0.72, 0.5), Vector2.ZERO, 0, 0)
+	_stamp.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_stamp.visible = false
 	_root.add_child(_stamp)
 	_root.visible = false
 
 
-func run(lv_id: String) -> void:
+func item_labels() -> Array:
+	var out: Array = []
+	for id in items:
+		out.append(String(GameData.item(String(id)).get("label", id)))
+	return out
+
+
+## Explication affichée après un choix (bon ou mauvais procédé).
+func show_explanation(text: String, ok: bool) -> void:
+	_hint.text = text
+	UiKit.set_label_color(_hint, UiKit.GOOD if ok else UiKit.BAD)
+
+
+func run(lv_id: String, collected: Array = []) -> void:
 	level_id = lv_id
+	items = collected
 	steps = GameData.level(lv_id).get("steps", [])
 	idx = 0
 	active = true
@@ -424,11 +540,13 @@ func _load_step() -> void:
 		sb.content_margin_left = 12
 		sb.content_margin_right = 12
 		chip.add_theme_stylebox_override("panel", sb)
-		chip.add_child(UiKit.label("%d  %s" % [i + 1, s.title], 14, UiKit.PAPER, "black"))
+		chip.add_child(UiKit.label(("%d  %s" % [i + 1, s.title]) if i == idx else str(i + 1), 12, UiKit.PAPER, "black"))
 		_chips.add_child(chip)
 	_title.text = String(st.title)
-	_verb.text = String(st.verb)
+	_verb.text = "WHAT TO DO: " + String(st.verb)
+	_why.text = "WHY IT MATTERS: " + String(st.get("why", ""))
 	_hint.text = String(st.hint)
+	UiKit.set_label_color(_hint, UiKit.MUTED)
 	_status.text = "Step %d / %d   ·   +%d pts" % [idx + 1, steps.size(), GameState.PTS_STEP]
 	_stage.setup(st, GameState.demo_mode)
 
@@ -439,6 +557,7 @@ func _on_step_done() -> void:
 	step_completed.emit(String(st.id))
 	if sfx != null:
 		sfx.milestone()
+	_stamp.text = "%s\n+%d" % [String(st.get("done", "STEP COMPLETE")), GameState.PTS_STEP]
 	_stamp.visible = true
 	_stamp.pivot_offset = _stamp.size * 0.5
 	_stamp.scale = Vector2(1.6, 1.6)
@@ -448,7 +567,7 @@ func _on_step_done() -> void:
 	tw.tween_property(_stamp, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK)
 	tw.tween_property(_stamp, "modulate:a", 1.0, 0.15)
 	tw.set_parallel(false)
-	tw.tween_interval(0.75)
+	tw.tween_interval(1.1)
 	tw.tween_property(_stamp, "modulate:a", 0.0, 0.2)
 	tw.tween_callback(func():
 		_stamp.visible = false

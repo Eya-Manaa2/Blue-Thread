@@ -115,6 +115,53 @@ static func build(item_id: String) -> Node3D:
 			Mats.mi(Mats.box(Vector3(0.3, 0.015, 0.16)), Mats.mat(Color(0.82, 0.83, 0.86), 0.3, 0.8), Vector3.ZERO, root)
 			for k in 8:
 				Mats.mi(Mats.sphere(0.025), Mats.glass(Color(1, 1, 1, 0.6)), Vector3(-0.1 + (k % 4) * 0.066, 0.015, -0.04 + (k / 4) * 0.08), root, Vector3.ZERO, Vector3(1, 0.6, 1))
+		"envelope":
+			Mats.mi(Mats.box(Vector3(0.42, 0.025, 0.28)), m, Vector3(0, 0.012, 0), root)
+			Mats.mi(Mats.box(Vector3(0.42, 0.026, 0.28)), Mats.mat(c.darkened(0.08), 0.85), Vector3(0.03, 0.04, -0.02), root, Vector3(0, 14, 0))
+			Mats.mi(Mats.box(Vector3(0.06, 0.008, 0.06)), Mats.mat(Color(0.75, 0.2, 0.2), 0.6), Vector3(0.14, 0.06, -0.08), root, Vector3(0, 14, 0))
+			for k in 3:
+				Mats.mi(Mats.box(Vector3(0.22, 0.004, 0.012)), Mats.mat(Color(0.25, 0.25, 0.3), 0.9), Vector3(-0.02, 0.056, -0.02 + k * 0.04), root, Vector3(0, 14, 0))
+		"hat":
+			Mats.mi(Mats.sphere(0.17, -1.0, 20), m, Vector3(0, 0.08, 0), root, Vector3.ZERO, Vector3(1, 0.85, 1))
+			Mats.mi(Mats.cyl(0.175, 0.175, 0.07, 20), Mats.mat(c.darkened(0.2), 0.95), Vector3(0, 0.04, 0), root)
+			Mats.mi(Mats.sphere(0.07), Mats.mat(Color(0.95, 0.95, 0.92), 0.95), Vector3(0, 0.24, 0), root)
+		"cardigan":
+			Mats.mi(Mats.box(Vector3(0.36, 0.42, 0.07)), m, Vector3(0, 0.21, 0), root)
+			for sx in [-1.0, 1.0]:
+				Mats.mi(Mats.box(Vector3(0.24, 0.12, 0.065)), m, Vector3(0.26 * sx, 0.3, 0), root, Vector3(0, 0, -55 * sx))
+			Mats.mi(Mats.box(Vector3(0.02, 0.42, 0.075)), Mats.mat(c.darkened(0.3), 0.9), Vector3(0, 0.21, 0), root)
+			for k in 4:
+				Mats.mi(Mats.cyl(0.018, 0.018, 0.012, 10), Mats.mat(Color(0.9, 0.85, 0.7), 0.4), Vector3(0.03, 0.08 + k * 0.09, -0.04), root, Vector3(90, 0, 0))
+		"yarn":
+			Mats.mi(Mats.sphere(0.13), m, Vector3(0, 0.13, 0), root)
+			for k in 3:
+				Mats.mi(Mats.torus(0.125, 0.135), m, Vector3(0, 0.13, 0), root, Vector3(k * 60, k * 40, 0))
+			var tail := Mats.bezier(Vector3(0.1, 0.06, 0), Vector3(0.25, 0.0, 0.05), Vector3(0.3, 0.02, -0.12), Vector3(0.42, 0.01, -0.1), 10)
+			Mats.mi(Mats.tube(tail, 0.01, 5), m, Vector3.ZERO, root)
+		"drinkcan":
+			Mats.mi(Mats.cyl(0.065, 0.065, 0.24, 18), Mats.mat(c, 0.3, 0.9), Vector3(0, 0.12, 0), root)
+			Mats.mi(Mats.cyl(0.066, 0.066, 0.12, 18), Mats.mat(Color(0.85, 0.15, 0.15), 0.5), Vector3(0, 0.12, 0), root)
+			Mats.mi(Mats.cyl(0.05, 0.065, 0.02, 18), Mats.mat(c, 0.3, 0.9), Vector3(0, 0.25, 0), root)
+		"toy":
+			Mats.mi(Mats.box(Vector3(0.34, 0.1, 0.18)), m, Vector3(0, 0.1, 0), root, Vector3(0, 0, 8))
+			Mats.mi(Mats.box(Vector3(0.16, 0.08, 0.16)), Mats.mat(Color(0.2, 0.5, 0.9), 0.5), Vector3(-0.02, 0.19, 0), root)
+			for p2 in [Vector3(-0.12, 0.05, 0.1), Vector3(0.12, 0.04, 0.1), Vector3(-0.12, 0.05, -0.1)]:
+				Mats.mi(Mats.cyl(0.05, 0.05, 0.03, 12), Mats.mat(Color(0.08, 0.08, 0.08), 0.8), p2, root, Vector3(90, 0, 0))
+			Mats.mi(Mats.cyl(0.05, 0.05, 0.03, 12), Mats.mat(Color(0.08, 0.08, 0.08), 0.8), Vector3(0.28, 0.02, -0.12), root, Vector3(20, 0, 70))
+		"container":
+			var cg := Mats.glass(Color(c.r, c.g, c.b, 0.6))
+			Mats.mi(Mats.box(Vector3(0.32, 0.14, 0.24)), cg, Vector3(0, 0.07, 0), root)
+			Mats.mi(Mats.box(Vector3(0.34, 0.025, 0.26)), Mats.mat(c, 0.5), Vector3(0.03, 0.16, 0.02), root, Vector3(0, 0, 12))
+		"glassbottle":
+			var gg := Mats.glass(Color(c.r, c.g, c.b, 0.75))
+			Mats.mi(Mats.cyl(0.07, 0.07, 0.26, 16), gg, Vector3(0, 0.13, 0), root)
+			Mats.mi(Mats.cyl(0.025, 0.07, 0.08, 16), gg, Vector3(0, 0.3, 0), root)
+			Mats.mi(Mats.cyl(0.022, 0.022, 0.12, 12), gg, Vector3(0, 0.4, 0), root)
+			Mats.mi(Mats.cyl(0.072, 0.072, 0.08, 16), Mats.mat(Color(0.95, 0.92, 0.8), 0.7), Vector3(0, 0.12, 0), root)
+		"packaging":
+			Mats.mi(Mats.box(Vector3(0.22, 0.3, 0.12)), m, Vector3(0, 0.15, 0), root)
+			Mats.mi(Mats.box(Vector3(0.18, 0.12, 0.005)), Mats.mat(Color(0.9, 0.3, 0.2), 0.6), Vector3(0, 0.17, -0.062), root)
+			Mats.mi(Mats.box(Vector3(0.22, 0.04, 0.12)), Mats.mat(c.lightened(0.1), 0.85), Vector3(0, 0.31, 0), root, Vector3(18, 0, 0))
 		_:
 			Mats.mi(Mats.box(Vector3(0.3, 0.3, 0.3)), m, Vector3(0, 0.15, 0), root)
 	return root

@@ -1,20 +1,28 @@
 extends Control
 ## Intro passable.
 ##  - Si res://assets/video/intro.ogv existe : lecture vidéo (VideoStreamPlayer, Theora).
-##  - Sinon : diaporama « Ken Burns » à partir des images de référence, avec
-##    sous-titres, bandes cinéma et points de progression.
-## Espace / Entrée / clic : diapo suivante. Échap ou PASSER : tout passer.
+##  - Sinon : histoire illustrée (GameData.INTRO_SCENES) : 5 scènes avec les
+##    nouvelles images, une réplique à la fois (Mima / le joueur / narrateur),
+##    fondu enchaîné « Ken Burns », puis la carte titre
+##    « BLUE THREAD — THE LAST BLUE » / « Every thread is a beginning. »
+## Espace / Entrée / clic : réplique suivante. Échap ou PASSER : tout passer.
 ## (Aucune vidéo n'est générée par le projet : le fichier .ogv est optionnel.)
 
 signal finished
 
 const VIDEO_PATH := "res://assets/video/intro.ogv"
 const SLIDE_TIME := 5.5
+const TITLE_TIME := 4.5
 
 var sfx: Node = null
 var drives_audio: bool = true   # Main ne met pas à jour l'ambiance à notre place
-var _slides: Array = []
+var _slides: Array = []          # scènes
+var _beats: Array = []           # [{scene, who, text}]
 var _i: int = -1
+var _scene: int = -1
+var _beat_time: float = SLIDE_TIME
+var _logo: TextureRect
+var _tagline: Label
 var _layers: Array = []
 var _title: Label
 var _sub: Label
@@ -39,7 +47,10 @@ func _ready() -> void:
 		_video.finished.connect(_finish)
 		_video.play()
 	else:
-		_slides = GameData.INTRO_SLIDES
+		_slides = GameData.INTRO_SCENES
+		for si in _slides.size():
+			for line in (_slides[si].lines as Array):
+				_beats.append({"scene": si, "who": String(line[0]), "text": String(line[1])})
 		var clip := UiKit.full_rect(Control.new())
 		clip.clip_contents = true
 		clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -68,10 +79,10 @@ func _ready() -> void:
 		v.custom_minimum_size = Vector2(1000, 0)
 		UiKit.place(v, Vector2(0.5, 1), Vector2(0, -104), 0, -1)
 		add_child(v)
-		_title = UiKit.label("", 40, UiKit.PAPER, "black", 6)
+		_title = UiKit.label("", 26, Color(1.0, 0.82, 0.45), "black", 6)
 		_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(_title)
-		_sub = UiKit.label("", 22, Color(0.85, 0.92, 1.0), "regular", 5)
+		_sub = UiKit.label("", 26, Color(0.92, 0.96, 1.0), "regular", 5)
 		_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_sub.custom_minimum_size = Vector2(1000, 0)
@@ -82,6 +93,19 @@ func _ready() -> void:
 		for k in _slides.size():
 			var d := UiKit.tex("res://assets/icons/dot.png", Vector2(12, 12))
 			_dots.add_child(d)
+		# carte titre (dernière scène)
+		var tv := UiKit.vbox(18)
+		tv.alignment = BoxContainer.ALIGNMENT_CENTER
+		UiKit.place(tv, Vector2(0.5, 0.45), Vector2.ZERO, 0, 0)
+		tv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(tv)
+		_logo = UiKit.tex("res://assets/ui/logo_official.png", Vector2(640, 300))
+		tv.add_child(_logo)
+		_tagline = UiKit.label("", 30, Color(0.75, 0.92, 1.0), "bold", 6)
+		_tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		tv.add_child(_tagline)
+		_logo.modulate.a = 0.0
+		_tagline.modulate.a = 0.0
 		_next()
 	var skip := UiKit.ghost_button("SKIP INTRO  (Esc)", 16)
 	UiKit.place(skip, Vector2(1, 1), Vector2(-24, -24), -1, -1)
@@ -91,31 +115,70 @@ func _ready() -> void:
 
 func _next() -> void:
 	_i += 1
-	if _i >= _slides.size():
+	if _i >= _beats.size():
 		_finish()
 		return
 	_timer = 0.0
-	var s: Dictionary = _slides[_i]
-	var front: TextureRect = _layers[_i % 2]
-	var back: TextureRect = _layers[(_i + 1) % 2]
-	front.texture = load(String(s.image))
-	front.pivot_offset = size * Vector2(0.5 + (0.12 if _i % 2 == 0 else -0.12), 0.5)
-	front.scale = Vector2(1.04, 1.04)
-	front.move_to_front()
-	var tw := create_tween().set_parallel(true)
-	tw.tween_property(front, "modulate:a", 1.0, 1.0)
-	tw.tween_property(back, "modulate:a", 0.0, 1.0)
-	tw.tween_property(front, "scale", Vector2(1.16, 1.16), SLIDE_TIME + 1.5).set_trans(Tween.TRANS_SINE)
-	_title.text = String(s.text)
-	_sub.text = String(s.sub)
+	var beat: Dictionary = _beats[_i]
+	var sc: int = int(beat.scene)
+	var sd: Dictionary = _slides[sc]
+	var is_title: bool = bool(sd.get("title", false))
+	if sc != _scene:
+		_scene = sc
+		_show_image(String(sd.image), sc)
+	var who: String = String(beat.who)
+	var text: String = String(beat.text).replace("{name}", GameState.display_name())
+	if is_title:
+		_title.text = ""
+		_sub.text = ""
+		if _logo.modulate.a < 0.5:
+			# BLUE THREAD — THE LAST BLUE : logo officiel
+			var tl := create_tween()
+			tl.tween_property(_logo, "modulate:a", 1.0, 1.0)
+		else:
+			_tagline.text = text
+			var tt := create_tween()
+			tt.tween_property(_tagline, "modulate:a", 1.0, 0.8)
+		_beat_time = TITLE_TIME * (0.6 if _tagline.text == "" else 1.0)
+		return
+	match who:
+		"NARRATOR":
+			_title.text = ""
+		"PLAYER", "YASSINE":
+			_title.text = GameState.display_name().to_upper()
+		_:
+			_title.text = who
+	UiKit.set_label_color(_title, UiKit.TEAL if who == "MIMA" else Color(1.0, 0.82, 0.45))
+	_sub.text = ("\u201c%s\u201d" % text) if who != "NARRATOR" else text
+	_beat_time = clampf(2.6 + text.length() * 0.05, 3.2, 8.0)
 	_title.modulate.a = 0.0
 	_sub.modulate.a = 0.0
 	var tw2 := create_tween()
-	tw2.tween_interval(0.5)
-	tw2.tween_property(_title, "modulate:a", 1.0, 0.6)
-	tw2.tween_property(_sub, "modulate:a", 1.0, 0.6)
+	tw2.tween_interval(0.25)
+	tw2.tween_property(_title, "modulate:a", 1.0, 0.35)
+	tw2.parallel().tween_property(_sub, "modulate:a", 1.0, 0.5)
+
+
+func _show_image(path: String, sc: int) -> void:
+	var front: TextureRect = _layers[sc % 2]
+	var back: TextureRect = _layers[(sc + 1) % 2]
+	if front.texture == null or front.texture.resource_path != path:
+		front.texture = load(path)
+	front.pivot_offset = size * Vector2(0.5 + (0.1 if sc % 2 == 0 else -0.1), 0.5)
+	front.scale = Vector2(1.03, 1.03)
+	front.move_to_front()
+	var tw := create_tween().set_parallel(true)
+	if bool(_slides[sc].get("title", false)):
+		# la carte titre : même image, assombrie, derrière le logo
+		front.modulate = Color(1, 1, 1, 0)
+		tw.tween_property(front, "modulate", Color(0.42, 0.48, 0.58, 1.0), 1.2)
+	else:
+		front.modulate = Color(1, 1, 1, front.modulate.a)
+		tw.tween_property(front, "modulate:a", 1.0, 1.2)
+	tw.tween_property(back, "modulate:a", 0.0, 1.2)
+	tw.tween_property(front, "scale", Vector2(1.14, 1.14), 22.0).set_trans(Tween.TRANS_SINE)
 	for k in _dots.get_child_count():
-		(_dots.get_child(k) as CanvasItem).modulate = Color(0.4, 0.85, 1.0) if k == _i else Color(1, 1, 1, 0.3)
+		(_dots.get_child(k) as CanvasItem).modulate = Color(0.4, 0.85, 1.0) if k == sc else Color(1, 1, 1, 0.3)
 	if sfx != null:
 		sfx.whoosh()
 
@@ -124,7 +187,7 @@ func _process(delta: float) -> void:
 	if _done or _video != null:
 		return
 	_timer += delta
-	if _timer >= SLIDE_TIME:
+	if _timer >= _beat_time:
 		_next()
 	if sfx != null:
 		sfx.update(0.0, 0.25, Vector3.ZERO, delta)

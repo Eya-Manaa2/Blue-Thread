@@ -5,6 +5,8 @@ extends "res://scripts/player.gd"
 ## gants, genouillères, bottes, montre connectée au poignet.
 ## Hérite du déplacement / de l'animation de marche de player.gd.
 
+var avatar_id: int = -1          # -1 = avatar du profil (GameState.avatar_id)
+var frozen: bool = false         # contrôles et animation de marche coupés (aperçu, mort, cinématique)
 var head: Node3D
 var mask_root: Node3D
 var face_under_mask: Node3D
@@ -15,9 +17,13 @@ var _torso: Node3D
 
 
 func _build_boy() -> void:
-	var skin := Mats.mat(Color(0.93, 0.72, 0.56), 0.55, 0.0, 0.2)
-	var hair := Mats.mat(Color(0.30, 0.17, 0.08), 0.75, 0.0, 0.25)
-	var hair_hi := Mats.mat(Color(0.42, 0.25, 0.12), 0.7, 0.0, 0.25)
+	if avatar_id < 0:
+		avatar_id = GameState.avatar_id if GameState.avatar_id >= 0 else 1
+	var av: Dictionary = GameData.avatar(avatar_id)
+	var hair_c: Color = av.hair
+	var skin := Mats.mat(av.skin, 0.55, 0.0, 0.2)
+	var hair := Mats.mat(hair_c, 0.75, 0.0, 0.25)
+	var hair_hi := Mats.mat(hair_c.lightened(0.18), 0.7, 0.0, 0.25)
 	var jacket := Mats.mat(Color(0.64, 0.54, 0.40), 0.92, 0.0, 0.18)
 	var jacket_lt := Mats.mat(Color(0.74, 0.65, 0.50), 0.92, 0.0, 0.18)
 	var shirt := Mats.mat(Color(0.27, 0.22, 0.17), 0.95)
@@ -148,25 +154,72 @@ func _build_boy() -> void:
 		hose_pts[i] = hose_pts[i] - head.position
 	Mats.mi(Mats.tube(hose_pts, 0.026, 10, true), Mats.mat(Color(0.10, 0.10, 0.11), 0.5), Vector3.ZERO, mask_root)
 
-	# cheveux en bataille : calotte + mèches orientées vers l'extérieur
-	Mats.mi(Mats.sphere(0.318, -1.0, 28), hair, Vector3(0, 0.33, 0.035), head, Vector3.ZERO, Vector3(1.0, 0.86, 1.02))
+	_build_hair(String(av.style), hair, hair_hi, bool(av.girl))
+	if bool(av.girl):
+		for sx in [-1.0, 1.0]:
+			for k in 3:
+				Mats.mi(Mats.box(Vector3(0.012, 0.035, 0.01)), Mats.mat(Color(0.05, 0.03, 0.03), 0.5), Vector3(0.1 * sx + (k - 1) * 0.03 * sx + 0.03 * sx, 0.36, -0.29), head, Vector3(0, 0, -25 * sx + k * 12 * sx))
+
+
+## Coiffures des six avatars : même tête, même masque, même squelette.
+func _build_hair(style: String, hair: Material, hair_hi: Material, girl: bool) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 2060
+	rng.seed = 2060 + avatar_id
+	if style == "hijab":
+		var hc: Color = GameData.avatar(avatar_id).hair
+		var cloth: Material = Mats.mat(hc, 0.85, 0.0, 0.25)
+		var cloth_hi: Material = Mats.mat(hc.lightened(0.15), 0.85, 0.0, 0.25)
+		Mats.mi(Mats.sphere(0.335, -1.0, 28), cloth, Vector3(0, 0.29, 0.07), head, Vector3.ZERO, Vector3(1.05, 1.03, 1.0))
+		Mats.mi(Mats.torus(0.24, 0.3), cloth_hi, Vector3(0, 0.26, -0.15), head, Vector3(78, 0, 0), Vector3(1.0, 1.0, 1.25))
+		Mats.mi(Mats.cyl(0.2, 0.33, 0.42, 22), cloth, Vector3(0, -0.06, 0.04), head)
+		return
+	# calotte commune
+	Mats.mi(Mats.sphere(0.318, -1.0, 28), hair, Vector3(0, 0.33, 0.035), head, Vector3.ZERO, Vector3(1.0, 0.86, 1.02))
+	if style == "short_curly" or style == "curly":
+		var n: int = 46 if style == "curly" else 30
+		var spread: float = 0.36 if style == "curly" else 0.31
+		for i in n:
+			var theta: float = rng.randf_range(0.0, TAU)
+			var phi: float = rng.randf_range(0.0, 1.45 if style == "curly" else 1.2)
+			var dir := Vector3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta))
+			if dir.z < -0.6 and dir.y < 0.7:
+				continue
+			var p: Vector3 = Vector3(0, 0.33, 0.04) + dir * spread
+			Mats.mi(Mats.sphere(rng.randf_range(0.06, 0.09) if style == "curly" else rng.randf_range(0.045, 0.065)), hair if i % 3 else hair_hi, p, head)
+		if style == "curly":
+			for k in 10:
+				Mats.mi(Mats.sphere(rng.randf_range(0.07, 0.1)), hair, Vector3(rng.randf_range(-0.3, 0.3), rng.randf_range(0.0, 0.2), rng.randf_range(0.18, 0.32)), head)
+		return
+	# mèches en bataille (garçon) ou cheveux longs (fille)
 	for i in 30:
-		var theta: float = rng.randf_range(0.0, TAU)
-		var phi: float = rng.randf_range(0.05, 1.25)
-		var dir := Vector3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta))
-		if dir.z < -0.55 and dir.y < 0.75:
+		var theta2: float = rng.randf_range(0.0, TAU)
+		var phi2: float = rng.randf_range(0.05, 1.25)
+		var dir2 := Vector3(sin(phi2) * cos(theta2), cos(phi2), sin(phi2) * sin(theta2))
+		if dir2.z < -0.55 and dir2.y < 0.75:
 			continue    # dégager le visage
-		var base: Vector3 = Vector3(0, 0.33, 0.035) + Vector3(dir.x * 0.3, dir.y * 0.26, dir.z * 0.31)
-		var out: Vector3 = (dir + Vector3(0, -0.15, 0.25) + Vector3(rng.randf_range(-0.3, 0.3), 0, rng.randf_range(-0.3, 0.3))).normalized()
+		var base: Vector3 = Vector3(0, 0.33, 0.035) + Vector3(dir2.x * 0.3, dir2.y * 0.26, dir2.z * 0.31)
+		var out: Vector3 = (dir2 + Vector3(0, -0.15, 0.25) + Vector3(rng.randf_range(-0.3, 0.3), 0, rng.randf_range(-0.3, 0.3))).normalized()
+		if girl:
+			out = (dir2 * 0.4 + Vector3(0, -0.6, 0.2)).normalized()
 		var tuft := Mats.mi(Mats.capsule(rng.randf_range(0.045, 0.07), rng.randf_range(0.16, 0.27)), hair if i % 3 else hair_hi, base, head)
 		tuft.basis = Basis(Quaternion(Vector3.UP, out))
 	# frange tombant sur le front
 	for k in 6:
 		var x: float = -0.17 + k * 0.07
 		var t := Mats.mi(Mats.capsule(0.055, 0.22), hair if k % 2 else hair_hi, Vector3(x, 0.47, -0.2), head)
-		t.basis = Basis(Quaternion(Vector3.UP, Vector3(x * 1.4, 0.35, -1.0).normalized()))
+		t.basis = Basis(Quaternion(Vector3.UP, Vector3(x * 1.4, 0.35 if not girl else 0.15, -1.0).normalized()))
+	if style == "long":
+		# longue chevelure dans le dos et mèches sur les côtés
+		Mats.mi(Mats.sphere(0.3), hair, Vector3(0, 0.08, 0.17), head, Vector3.ZERO, Vector3(1.05, 1.5, 0.62))
+		Mats.mi(Mats.sphere(0.24), hair_hi, Vector3(0, -0.2, 0.2), head, Vector3.ZERO, Vector3(1.0, 1.3, 0.55))
+		for sx in [-1.0, 1.0]:
+			Mats.mi(Mats.capsule(0.07, 0.42), hair, Vector3(0.27 * sx, 0.1, -0.02), head, Vector3(0, 0, 8 * sx))
+
+
+func _physics_process(delta: float) -> void:
+	if frozen:
+		return
+	super(delta)
 
 
 func _process(delta: float) -> void:
@@ -174,7 +227,7 @@ func _process(delta: float) -> void:
 	if _torso != null:
 		var b: float = 1.0 + sin(_breath_t * 2.2) * 0.012
 		_torso.scale = Vector3(b, 1.0, b)
-	if head != null:
+	if head != null and not frozen:
 		head.rotation.x = sin(_breath_t * 1.1) * 0.03 - speed_factor * 0.08
 	if wrist_screen != null:
 		var mat := wrist_screen.material_override as StandardMaterial3D
@@ -190,6 +243,44 @@ func remove_mask() -> void:
 	tw.tween_property(mask_root, "position", Vector3(0, -0.4, -0.6), 0.9).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tw.parallel().tween_property(mask_root, "scale", Vector3(0.01, 0.01, 0.01), 0.9)
 	tw.tween_callback(func(): mask_root.visible = false)
+
+
+## Mort par manque d'air : vacille, tombe à genoux puis s'effondre et reste au sol.
+func collapse() -> Tween:
+	frozen = true
+	velocity = Vector3.ZERO
+	var tw := create_tween()
+	tw.tween_property(visual, "rotation:z", 0.18, 0.25).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(visual, "rotation:z", -0.16, 0.3).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(visual, "rotation:z", 0.08, 0.25).set_trans(Tween.TRANS_SINE)
+	# à genoux
+	tw.set_parallel(true)
+	tw.tween_property(_leg_l, "rotation:x", 1.35, 0.5).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(_leg_r, "rotation:x", 1.25, 0.5).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(visual, "position:y", -0.36, 0.5).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(_arm_l, "rotation:x", -0.5, 0.5)
+	tw.tween_property(_arm_r, "rotation:x", -0.7, 0.5)
+	tw.tween_property(head, "rotation:x", 0.35, 0.5)
+	tw.set_parallel(false)
+	tw.tween_interval(0.45)
+	# effondrement sur le côté
+	tw.set_parallel(true)
+	tw.tween_property(visual, "rotation:z", 1.42, 0.7).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(visual, "position:y", -0.12, 0.7)
+	tw.tween_property(_arm_l, "rotation:x", -1.4, 0.7)
+	tw.set_parallel(false)
+	return tw
+
+
+## Retour au point de contrôle : posture normale, contrôles réactivés.
+func revive() -> void:
+	visual.rotation = Vector3.ZERO
+	visual.position = Vector3.ZERO
+	for n in [_leg_l, _leg_r, _arm_l, _arm_r]:
+		(n as Node3D).rotation = Vector3.ZERO
+	head.rotation = Vector3.ZERO
+	velocity = Vector3.ZERO
+	frozen = false
 
 
 func set_air_warning(low: bool) -> void:

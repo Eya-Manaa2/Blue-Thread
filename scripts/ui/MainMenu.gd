@@ -1,17 +1,18 @@
 extends Control
 ## Menu principal : image de fond (côte 2060) en lent travelling, logo,
-## fil bleu animé, choix de rivage, mode jury, aperçu de restauration,
+## fil bleu animé, jouer / continuer, aperçu de restauration,
 ## état du serveur (océan partagé).
+## (Retirés à la demande : « CHOOSE A SHORE », « JURY DEMO MODE » et le
+##  texte de pied de page. Le mode jury reste accessible par ?demo=1 / J.)
 
 signal play_story
+signal continue_game
 signal play_level(level_id: String)
 signal open_preview
 
 var _bg: TextureRect
 var _thread: Line2D
 var _thread2: Line2D
-var _levels_panel: PanelContainer
-var _demo_btn: Button
 var _status: Label
 var _t: float = 0.0
 
@@ -72,52 +73,30 @@ void fragment() {
 	var sp := Control.new()
 	sp.custom_minimum_size = Vector2(0, 10)
 	col.add_child(sp)
-	var b_play := UiKit.button("PLAY THE STORY", UiKit.TEAL, 26, 360)
+	var first: Button = null
+	if GameState.has_profile() and GameState.has_progress():
+		var nxt: Dictionary = GameData.level(GameState.next_level())
+		var b_cont := UiKit.button("CONTINUE  ·  %s" % String(nxt.get("title", "")), UiKit.TEAL, 26, 360)
+		b_cont.pressed.connect(func(): continue_game.emit())
+		col.add_child(b_cont)
+		first = b_cont
+	var b_play := UiKit.button("PLAY THE STORY" if first == null else "NEW STORY", UiKit.TEAL if first == null else Color(0.35, 0.55, 0.9), 26 if first == null else 22, 360)
 	b_play.pressed.connect(func(): play_story.emit())
 	col.add_child(b_play)
-	var b_lv := UiKit.button("CHOOSE A SHORE", Color(0.35, 0.55, 0.9), 22, 360)
-	b_lv.pressed.connect(func(): _levels_panel.visible = not _levels_panel.visible)
-	col.add_child(b_lv)
+	if first == null:
+		first = b_play
 	var b_prev := UiKit.button("RESTORATION PREVIEW", Color(0.3, 0.7, 0.55), 22, 360)
 	b_prev.pressed.connect(func(): open_preview.emit())
 	col.add_child(b_prev)
-	_demo_btn = UiKit.button("", Color(0.7, 0.3, 0.75), 20, 360)
-	_demo_btn.pressed.connect(_toggle_demo)
-	col.add_child(_demo_btn)
-	_update_demo()
-	b_play.grab_focus.call_deferred()
-
-	_levels_panel = UiKit.panel(Color(0.03, 0.05, 0.08, 0.86), 22, Color(1, 1, 1, 0.12))
-	UiKit.place(_levels_panel, Vector2(1, 0.5), Vector2(-60, 30), -1, 0)
-	add_child(_levels_panel)
-	var lv_box := UiKit.vbox(12)
-	_levels_panel.add_child(lv_box)
-	lv_box.add_child(UiKit.label("CHOOSE A SHORE", 22, UiKit.PAPER, "black"))
-	for id in GameData.LEVEL_ORDER:
-		var lv: Dictionary = GameData.level(id)
-		var c: Color = GameData.BINS[String(lv.material)].color
-		var b := UiKit.button("%d   %s   ·   %s" % [int(lv.index) + 1, lv.title, lv.material_label], c, 20, 420)
-		b.pressed.connect(func(): play_level.emit(id))
-		lv_box.add_child(b)
-		var s := UiKit.label(String(lv.subtitle), 14, UiKit.MUTED, "bold")
-		lv_box.add_child(s)
-	_levels_panel.visible = false
+	first.grab_focus.call_deferred()
 
 	_status = UiKit.label("", 15, UiKit.MUTED, "bold")
-	UiKit.place(_status, Vector2(0, 1), Vector2(70, -46), 1, -1)
+	UiKit.place(_status, Vector2(0, 1), Vector2(70, -30), 1, -1)
 	add_child(_status)
-	var credits := UiKit.label("Team SUP'ANANAS  ·  SUP'COM  ·  Green Hackathon 2026  ·  Swedish-Tunisian Games & Innovation Days", 13, Color(1, 1, 1, 0.55), "regular")
-	UiKit.place(credits, Vector2(0, 1), Vector2(70, -20), 1, -1)
-	add_child(credits)
 
 
 func _toggle_demo() -> void:
 	GameState.demo_mode = not GameState.demo_mode
-	_update_demo()
-
-
-func _update_demo() -> void:
-	_demo_btn.text = "JURY DEMO MODE: " + ("ON" if GameState.demo_mode else "OFF")
 
 
 func _process(delta: float) -> void:

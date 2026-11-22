@@ -14,6 +14,8 @@ var _score: Label
 var _air_gauge: Gauge
 var _air_lbl: Label
 var _obj_lbl: Label
+var _timer_lbl: Label
+var _name_lbl: Label
 var _obj_panel: PanelContainer
 var _arrow: Arrow
 var _rest_gauge: Gauge
@@ -28,6 +30,7 @@ var _accent: Color = UiKit.RUST
 var _low_air: bool = false
 var _t: float = 0.0
 var _hurt: float = 0.0
+var _dark: float = 0.0
 
 const VIGNETTE := """
 shader_type canvas_item;
@@ -106,6 +109,8 @@ func _ready() -> void:
 	v.add_child(_title)
 	_sub = UiKit.label("The seaside oasis · 2060", 15, UiKit.MUTED, "bold")
 	v.add_child(_sub)
+	_name_lbl = UiKit.label("", 15, Color(1.0, 0.82, 0.45), "black")
+	v.add_child(_name_lbl)
 	var row := UiKit.hbox(6)
 	v.add_child(row)
 	for i in GameState.MAX_HEARTS:
@@ -145,6 +150,9 @@ func _ready() -> void:
 	_obj_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_obj_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	oh.add_child(_obj_lbl)
+	_timer_lbl = UiKit.label("", 22, UiKit.PAPER, "black")
+	_timer_lbl.visible = false
+	oh.add_child(_timer_lbl)
 
 	# ---- restauration locale + océan global (deux valeurs distinctes)
 	var rc := UiKit.panel(Color(0.03, 0.05, 0.08, 0.72), 18)
@@ -194,7 +202,7 @@ func _ready() -> void:
 	# ---- badge jury
 	_demo_badge = UiKit.panel(Color(0.55, 0.12, 0.6, 0.85), 14)
 	UiKit.place(_demo_badge, Vector2(0.5, 1), Vector2(0, -20), 0, -1)
-	var dl := UiKit.label("JURY DEMO  ·  F2 skip phase  ·  air drains slowly", 15, Color(1, 1, 1), "bold")
+	var dl := UiKit.label("JURY DEMO  ·  F2 skips the current phase", 15, Color(1, 1, 1), "bold")
 	_demo_badge.add_child(dl)
 	_demo_badge.visible = false
 	_root.add_child(_demo_badge)
@@ -215,6 +223,29 @@ func set_level(level_id: String) -> void:
 	_title.text = String(lv.get("title", ""))
 	_sub.text = "%s · %s" % [lv.get("subtitle", ""), lv.get("year", "2060")]
 	_demo_badge.visible = GameState.demo_mode
+	_name_lbl.text = "KEEPER: " + GameState.display_name().to_upper()
+
+
+## Chronomètre de collecte (NAN = masqué)
+func set_timer(seconds: float, warn: bool = false) -> void:
+	_timer_lbl.visible = not is_nan(seconds)
+	if _timer_lbl.visible:
+		var t: int = int(ceil(maxf(0.0, seconds)))
+		_timer_lbl.text = "%d:%02d" % [t / 60, t % 60]
+		UiKit.set_label_color(_timer_lbl, UiKit.BAD if warn else UiKit.PAPER)
+
+
+func flash_timer_penalty() -> void:
+	_timer_lbl.pivot_offset = _timer_lbl.size * 0.5
+	var tw := create_tween()
+	tw.tween_property(_timer_lbl, "scale", Vector2(1.5, 1.5), 0.08)
+	tw.tween_property(_timer_lbl, "scale", Vector2.ONE, 0.3)
+
+
+## Vignette sombre (scène de mort) : 0..1
+func set_dark_vignette(amount: float) -> void:
+	_vig_mat.set_shader_parameter("tint", Color(0, 0, 0, 1) if amount > 0.0 else Color(1.0, 0.1, 0.1, 1))
+	_dark = amount
 
 
 func set_objective(text: String) -> void:
@@ -250,6 +281,32 @@ func toast(text: String, col: Color = UiKit.PAPER, big: bool = false) -> void:
 	var tw := create_tween()
 	tw.tween_property(p, "modulate:a", 1.0, 0.15)
 	tw.tween_interval(1.6 if not big else 2.4)
+	tw.tween_property(p, "modulate:a", 0.0, 0.35)
+	tw.tween_callback(p.queue_free)
+	while _toast_box.get_child_count() > 3:
+		_toast_box.get_child(0).queue_free()
+		break
+
+
+## Avertissement éducatif (objet piège) : titre + explication courte
+func toast_tip(title: String, body: String, col: Color = UiKit.BAD) -> void:
+	var p := UiKit.panel(Color(0.02, 0.04, 0.07, 0.88), 16, Color(col.r, col.g, col.b, 0.6))
+	var v := UiKit.vbox(4)
+	p.add_child(v)
+	var t := UiKit.label(title, 22, col, "black")
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(t)
+	var b := UiKit.label(body, 17, UiKit.PAPER, "regular")
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.custom_minimum_size = Vector2(520, 0)
+	b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(b)
+	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_toast_box.add_child(p)
+	p.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(p, "modulate:a", 1.0, 0.15)
+	tw.tween_interval(3.2)
 	tw.tween_property(p, "modulate:a", 0.0, 0.35)
 	tw.tween_callback(p.queue_free)
 	while _toast_box.get_child_count() > 3:
@@ -303,7 +360,7 @@ func _process(delta: float) -> void:
 	_t += delta
 	_hurt = maxf(0.0, _hurt - delta * 1.6)
 	var low: float = (0.35 + 0.25 * sin(_t * 6.0)) if _low_air else 0.0
-	_vig_mat.set_shader_parameter("amount", maxf(low, _hurt * 0.8))
+	_vig_mat.set_shader_parameter("amount", _dark if _dark > 0.0 else maxf(low, _hurt * 0.8))
 	_air_gauge.pulse = (0.5 + 0.5 * sin(_t * 8.0)) if _low_air else 0.0
 	if _low_air:
 		_air_gauge.queue_redraw()

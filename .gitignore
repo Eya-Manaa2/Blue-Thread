@@ -10,3 +10,4 @@ exports/*
 *.tmp
 .DS_Store
 Thumbs.db
+assets/references/

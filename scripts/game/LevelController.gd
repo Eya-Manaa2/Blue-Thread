@@ -1,9 +1,12 @@
 extends Node3D
 ## ============================================================
 ##  LevelController — un rivage jouable de BLUE THREAD: THE LAST BLUE
-##  INTRO (dialogue) -> COLLECT (5 objets, oxygène, recharges)
-##  -> TO_STATION -> SORT (tri bonus dans les 5 bacs) -> PUZZLE
-##  (atelier de recyclage) -> REWARD -> RESULTS
+##  INTRO (dialogue) -> COLLECT (5 objets utiles + objets pièges -5 s,
+##  chronomètre, oxygène 1/s, recharges, obstacles physiques)
+##  -> TO_STATION -> SORT (tri bonus dans les 5 bacs) -> WORKBENCH (les
+##  objets réellement ramassés posés sur l'établi) -> PUZZLE (étapes de
+##  recyclage) -> REWARD -> RESULTS.  Air à zéro -> DEAD (scène de mort,
+##  reprise au point de contrôle).
 ## ============================================================
 
 signal level_finished(result: Dictionary)
@@ -22,10 +25,11 @@ const ModalScript := preload("res://scripts/ui/Modal.gd")
 const JoystickScript := preload("res://scripts/joystick.gd")
 const BEAM_SHADER := preload("res://shaders/beam.gdshader")
 
-enum Phase { INTRO, COLLECT, TO_STATION, SORT, PUZZLE, REWARD, RESULTS, DEAD }
+enum Phase { INTRO, COLLECT, TO_STATION, SORT, WORKBENCH, PUZZLE, REWARD, RESULTS, DEAD }
 
 const COLLECT_SPOTS := [Vector2(-28, 2.5), Vector2(-14, 10.0), Vector2(13, 3.0), Vector2(27, 9.0), Vector2(-5, 5.5)]
 const REFILL_SPOTS := [Vector2(-21, 6.0), Vector2(20, 14.0), Vector2(7, 1.8)]
+const DISTRACTOR_SPOTS := [Vector2(-21, 12.5), Vector2(5, 10.5), Vector2(22, 4.5), Vector2(-33, 8.0)]
 
 var level_id: String = "gabes"
 var sfx: Node = null
@@ -63,6 +67,15 @@ var _cam_pos: Vector3
 var _cam_look: Vector3
 var _t: float = 0.0
 var _air_warned: bool = false
+var _useful_total: int = 5
+var _time_left: float = 180.0
+var _time_out_told: bool = false
+var _death_active: bool = false     # verrou : la mort ne se déclenche qu'une fois
+var _death_from: int = Phase.COLLECT
+var _dead_k: float = 0.0
+var _dead_cam_off := Vector3(1.7, 1.25, 2.3)
+var bench_pos: Vector3
+var _bench_items: Array = []        # Node3D posés sur l'établi
 
 var _sort_layer: CanvasLayer
 var _sort_card: PanelContainer
@@ -108,8 +121,18 @@ func _ready() -> void:
 	cam.global_position = _cam_pos + Vector3(0, 6, 10)
 	cam.look_at(_cam_look)
 
+	bench_pos = Vector3(-8.5, world.height_at(-8.5, 7.0), 7.0)
+	_build_workbench()
+
 	_spawn_collectibles()
+	_spawn_distractors()
 	_spawn_refills()
+	var keep: Array = [start_pos, station_pos, station_pos + Vector3(4.4, 0, 1.2), bench_pos, bench_pos + Vector3(2.1, 0, 0.3)]
+	for c in collectibles:
+		keep.append((c.root as Node3D).position)
+	for r in refills:
+		keep.append((r.root as Node3D).position)
+	world.add_obstacles(keep)
 
 	var jl := CanvasLayer.new()
 	jl.layer = 4
@@ -129,9 +152,8 @@ func _ready() -> void:
 	puzzle.sfx = sfx
 	add_child(puzzle)
 	puzzle.finished.connect(_on_puzzle_finished)
-	puzzle.step_completed.connect(func(_id):
-		_steps += 1
-		_update_restoration())
+	puzzle.step_completed.connect(_on_step_completed)
+	puzzle.item_placed.connect(_on_item_placed)
 	results = ResultsScript.new()
 	add_child(results)
 	results.continue_pressed.connect(func(): request_next.emit())
@@ -168,39 +190,57 @@ func _spot_pos(s: Vector2, shift: float) -> Vector3:
 
 
 func _spawn_collectibles() -> void:
-	var col: Color = GameData.BINS[String(lv.material)].color
 	var items: Array = lv.collect
+	_useful_total = items.size()
 	var shift: float = float(int(lv.index) * 3 - 3)
 	for i in items.size():
-		var p := _spot_pos(COLLECT_SPOTS[i % COLLECT_SPOTS.size()], shift)
-		var root := Node3D.new()
-		root.position = p
-		add_child(root)
-		var spin := Node3D.new()
-		spin.position = Vector3(0, 0.7, 0)
-		root.add_child(spin)
-		var model := ItemFactory.build(String(items[i]))
-		model.scale = Vector3.ONE * 1.6
-		spin.add_child(model)
-		var beam := MeshInstance3D.new()
-		beam.mesh = Mats.cyl(0.32, 0.45, 9.0, 18)
-		var bm := ShaderMaterial.new()
-		bm.shader = BEAM_SHADER
-		bm.set_shader_parameter("color", Color(col.r, col.g, col.b, 1.0).lightened(0.25))
-		bm.set_shader_parameter("height", 9.0)
-		beam.material_override = bm
-		beam.position = Vector3(0, 4.5, 0)
-		beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		root.add_child(beam)
-		var ring := Mats.mi(Mats.torus(0.55, 0.65, 32), Mats.emissive(col.lightened(0.3), 2.5), Vector3(0, 0.05, 0), root)
-		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var light := OmniLight3D.new()
-		light.light_color = col.lightened(0.3)
-		light.light_energy = 1.2
-		light.omni_range = 3.5
-		light.position = Vector3(0, 1.0, 0)
-		root.add_child(light)
-		collectibles.append({"root": root, "spin": spin, "id": String(items[i]), "taken": false, "phase": i * 1.3})
+		_spawn_pickup(String(items[i]), _spot_pos(COLLECT_SPOTS[i % COLLECT_SPOTS.size()], shift), false, i)
+
+
+## Objets pièges : visibles et nommés (étiquette 3D), ils ne comptent pas
+## pour la recette et coûtent du temps.
+func _spawn_distractors() -> void:
+	var items: Array = lv.get("distractors", [])
+	var shift: float = float(int(lv.index) * 2 - 2)
+	for i in items.size():
+		_spawn_pickup(String(items[i]), _spot_pos(DISTRACTOR_SPOTS[i % DISTRACTOR_SPOTS.size()], shift), true, i + 5)
+
+
+func _spawn_pickup(id: String, p: Vector3, bad: bool, i: int) -> void:
+	var col: Color = GameData.BINS[String(lv.material)].color
+	var root := Node3D.new()
+	root.position = p
+	add_child(root)
+	var spin := Node3D.new()
+	spin.position = Vector3(0, 0.7, 0)
+	root.add_child(spin)
+	var model := ItemFactory.build(id)
+	model.scale = Vector3.ONE * 1.6
+	spin.add_child(model)
+	var beam := MeshInstance3D.new()
+	beam.mesh = Mats.cyl(0.32, 0.45, 9.0, 18)
+	var bm := ShaderMaterial.new()
+	bm.shader = BEAM_SHADER
+	bm.set_shader_parameter("color", Color(col.r, col.g, col.b, 1.0).lightened(0.25))
+	bm.set_shader_parameter("height", 9.0)
+	beam.material_override = bm
+	beam.position = Vector3(0, 4.5, 0)
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(beam)
+	var ring := Mats.mi(Mats.torus(0.55, 0.65, 32), Mats.emissive(col.lightened(0.3), 2.5), Vector3(0, 0.05, 0), root)
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var light := OmniLight3D.new()
+	light.light_color = col.lightened(0.3)
+	light.light_energy = 1.2
+	light.omni_range = 3.5
+	light.position = Vector3(0, 1.0, 0)
+	root.add_child(light)
+	var tag := Mats.label3d(String(GameData.item(id).get("label", id)).to_upper(), 44, Color(1, 1, 1), root, Vector3(0, 1.9, 0), false)
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.outline_size = 10
+	tag.outline_modulate = Color(0, 0, 0, 0.8)
+	tag.no_depth_test = false
+	collectibles.append({"root": root, "spin": spin, "id": id, "taken": false, "phase": i * 1.3, "bad": bad, "tag": tag})
 
 
 func _spawn_refills() -> void:
@@ -253,8 +293,13 @@ func _process(delta: float) -> void:
 		var sp: Node3D = c.spin
 		sp.rotation.y += delta * 1.4
 		sp.position.y = 0.7 + sin(_t * 2.0 + float(c.phase)) * 0.15
-		if phase == Phase.COLLECT and _flat_dist(bp, (c.root as Node3D).global_position) < 1.8:
-			_take(c)
+		var dist := _flat_dist(bp, (c.root as Node3D).global_position)
+		(c.tag as Label3D).visible = dist < 14.0
+		if phase == Phase.COLLECT and dist < 1.8:
+			if bool(c.bad):
+				_take_distractor(c)
+			else:
+				_take(c)
 
 	for r in refills:
 		r.cool = maxf(0.0, float(r.cool) - delta)
@@ -271,13 +316,27 @@ func _process(delta: float) -> void:
 				if sfx != null:
 					sfx.whoosh()
 
-	if (phase == Phase.COLLECT or phase == Phase.TO_STATION) and not dialog.active and not modal.is_open:
+	# oxygène : uniquement pendant l'exploration active (pas de dialogue, pas de menu)
+	var exploring: bool = (phase == Phase.COLLECT or phase == Phase.TO_STATION) and not dialog.active and not modal.is_open and not _death_active
+	if exploring:
 		if GameState.drain_air(delta):
-			_out_of_air()
+			_die()
 		elif GameState.air < 25.0 and not _air_warned:
 			_air_warned = true
 			boy.set_air_warning(true)
 			hud.toast("LOW AIR! Find a blue O2 station", UiKit.BAD)
+	# chronomètre de collecte (en pause pendant dialogues / menus / mort)
+	if exploring and phase == Phase.COLLECT:
+		_time_left = maxf(0.0, _time_left - delta)
+		hud.set_timer(_time_left, _time_left < 30.0)
+		if _time_left <= 0.0 and not _time_out_told:
+			_time_out_told = true
+			hud.toast("TIME BONUS LOST — keep collecting", UiKit.BAD)
+	# scène de mort : couleurs qui s'éteignent, vignette sombre
+	if phase == Phase.DEAD:
+		_dead_k = move_toward(_dead_k, 1.0, delta / 1.6)
+		world.desaturate = _dead_k
+		hud.set_dark_vignette(0.75 * _dead_k)
 
 	# objectif + flèche
 	match phase:
@@ -321,12 +380,19 @@ func _update_camera(delta: float) -> void:
 	var tp: Vector3
 	var tl: Vector3
 	match phase:
-		Phase.SORT, Phase.PUZZLE:
+		Phase.SORT:
 			tp = station_pos + Vector3(0.0, 2.5, 5.6)
 			tl = station_pos + Vector3(0.0, 1.2, 0.0)
+		Phase.WORKBENCH, Phase.PUZZLE:
+			# l'établi à gauche de l'écran, le panneau d'étapes à droite
+			tp = bench_pos + Vector3(1.3, 2.3, 3.6)
+			tl = bench_pos + Vector3(1.1, 0.9, 0.0)
+		Phase.DEAD:
+			tp = bp + _dead_cam_off
+			tl = bp + Vector3(0.0, 0.35, 0.0)
 		Phase.REWARD, Phase.RESULTS:
 			var a: float = _t * 0.25
-			var c: Vector3 = station_pos + Vector3(0, 1.6, 2.2)
+			var c: Vector3 = bench_pos + Vector3(0, 1.4, 0.2)
 			tp = c + Vector3(sin(a) * 4.5, 1.4, cos(a) * 4.5)
 			tl = c
 		_:
@@ -342,7 +408,7 @@ func _update_camera(delta: float) -> void:
 func _update_restoration() -> void:
 	var n_sort: int = maxi(1, (lv.sort as Array).size())
 	var n_steps: int = maxi(1, (lv.steps as Array).size())
-	var frac: float = 0.4 * float(_collected) / 5.0 + 0.3 * float(_sorted) / float(n_sort) + 0.3 * float(_steps) / float(n_steps)
+	var frac: float = 0.4 * float(_collected) / float(maxi(1, _useful_total)) + 0.3 * float(_sorted) / float(n_sort) + 0.3 * float(_steps) / float(n_steps)
 	var p: float = float(lv.r_from) + (float(lv.r_to) - float(lv.r_from)) * frac * 0.85
 	GameState.set_local_restoration(p)
 	world.set_local_restoration(p)
@@ -351,8 +417,11 @@ func _update_restoration() -> void:
 # ================================================================ collecte
 func _start_collect() -> void:
 	_set_phase(Phase.COLLECT)
-	hud.set_objective("Collect %s   0 / 5" % lv.material_label)
+	_time_left = GameData.COLLECT_TIME
+	hud.set_timer(_time_left)
+	hud.set_objective("Collect %s only   0 / %d" % [lv.material_label, _useful_total])
 	hud.toast("WASD / arrows / joystick to move", UiKit.MUTED)
+	hud.toast("Read the labels: wrong objects cost %d s" % int(GameData.DISTRACTOR_PENALTY), Color(1.0, 0.86, 0.4))
 
 
 func _take(c: Dictionary) -> void:
@@ -373,7 +442,8 @@ func _take(c: Dictionary) -> void:
 	tw.tween_property(spin, "global_position", boy.global_position + Vector3(0, 1.3, 0.3), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tw.tween_property(spin, "scale", Vector3.ONE * 0.1, 0.35)
 	tw.chain().tween_callback(root.queue_free)
-	if _collected >= collectibles.size():
+	if _collected >= _useful_total:
+		_end_collection()
 		_set_phase(Phase.INTRO)
 		hud.set_objective("Go to the SORT STATION")
 		var tw2 := create_tween()
@@ -383,18 +453,115 @@ func _take(c: Dictionary) -> void:
 				_set_phase(Phase.TO_STATION)
 				hud.set_objective("Go to the SORT STATION")))
 	else:
-		hud.set_objective("Collect %s   %d / 5" % [lv.material_label, _collected])
+		hud.set_objective("Collect %s only   %d / %d" % [lv.material_label, _collected, _useful_total])
 
 
-func _out_of_air() -> void:
-	hud.toast("OUT OF AIR!", UiKit.BAD, true)
-	GameState.lose_heart("air")
-	if GameState.hearts > 0 or GameState.demo_mode:
-		boy.global_position = start_pos
-		boy.velocity = Vector3.ZERO
-		GameState.refill_air()
-		boy.set_air_warning(false)
-		_air_warned = false
+## Objet piège : ne compte pas, ne rejoint pas la recette, -5 s au chronomètre.
+func _take_distractor(c: Dictionary) -> void:
+	c.taken = true
+	_time_left = maxf(0.0, _time_left - GameData.DISTRACTOR_PENALTY)
+	hud.set_timer(_time_left, _time_left < 30.0)
+	hud.flash_timer_penalty()
+	GameState.distractor_picked()
+	if sfx != null:
+		sfx.bad()
+	var it: Dictionary = GameData.item(String(c.id))
+	var label: String = String(it.get("label", c.id))
+	var why: String = String(it.get("tip", ""))
+	if String(it.get("bin", "")) != "none":
+		why = "%s is not %s: it cannot be part of this recipe." % [label, String(lv.material_label).to_lower()]
+	hud.toast_tip("-%d s   ·   NOT %s: %s" % [int(GameData.DISTRACTOR_PENALTY), String(lv.material_label).to_upper(), label.to_upper()], why)
+	var root: Node3D = c.root
+	var tw := create_tween()
+	tw.tween_property(root, "scale", Vector3.ONE * 0.01, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.tween_callback(root.queue_free)
+
+
+func _end_collection() -> void:
+	var bonus: int = int(_time_left / 3.0)
+	hud.set_timer(NAN)
+	if bonus > 0:
+		GameState.add_score(bonus, "time_bonus")
+		hud.toast("TIME BONUS  +%d" % bonus, Color(1.0, 0.86, 0.4))
+	# les objets pièges restants disparaissent
+	for c in collectibles:
+		if not c.taken and bool(c.bad):
+			c.taken = true
+			var root: Node3D = c.root
+			var tw := create_tween()
+			tw.tween_property(root, "scale", Vector3.ONE * 0.01, 0.4)
+			tw.tween_callback(root.queue_free)
+
+
+# ================================================================ mort
+## Air à zéro : un seul déclenchement, contrôles gelés, effondrement,
+## caméra proche, désaturation, réplique, puis MISSION FAILED.
+func _die() -> void:
+	if _death_active:
+		return
+	_death_active = true
+	_death_from = phase
+	GameState.stats.deaths = int(GameState.stats.get("deaths", 0)) + 1
+	_set_phase(Phase.DEAD)
+	hud.set_arrow(NAN)
+	boy.input_enabled = false
+	boy.velocity = Vector3.ZERO
+	boy.set_air_warning(true)
+	if sfx != null:
+		sfx.bad()
+	_dead_cam_off = _pick_death_cam(boy.global_position)
+	var tw: Tween = boy.collapse()
+	tw.finished.connect(_death_line)
+
+
+## Caméra proche de la scène de mort : premier angle sans obstacle entre
+## la caméra et le personnage (rayon physique), pour qu'on le voie tomber.
+func _pick_death_cam(bp: Vector3) -> Vector3:
+	var space := get_world_3d().direct_space_state
+	var from := bp + Vector3(0, 0.6, 0)
+	for off in [Vector3(1.7, 1.25, 2.3), Vector3(-1.7, 1.25, 2.3), Vector3(0.0, 1.5, 2.6),
+			Vector3(1.8, 1.4, -2.0), Vector3(-1.8, 1.4, -2.0), Vector3(0.0, 2.6, 1.2)]:
+		var q := PhysicsRayQueryParameters3D.create(from, bp + (off as Vector3))
+		q.exclude = [boy.get_rid()]
+		if space.intersect_ray(q).is_empty():
+			return off
+	return Vector3(0.0, 2.6, 1.2)
+
+
+func _death_line() -> void:
+	var t := get_tree().create_timer(0.6)
+	t.timeout.connect(func(): dialog.show_lines([["PLAYER", GameData.DEATH_LINE]], _mission_failed))
+
+
+func _mission_failed() -> void:
+	modal.open("MISSION FAILED", "Your promise is not over.",
+		[["RETRY FROM CHECKPOINT", _retry_checkpoint, UiKit.TEAL], ["MAIN MENU", _to_menu, Color(0.6, 0.6, 0.7)]], UiKit.BAD)
+
+
+## Point de contrôle = entrée du rivage, air plein ; les objets déjà
+## ramassés, le profil et les rivages terminés sont conservés.
+func _retry_checkpoint() -> void:
+	get_tree().paused = false
+	boy.revive()
+	boy.global_position = start_pos
+	boy.visual.rotation.y = 0.0
+	GameState.refill_air()
+	boy.set_air_warning(false)
+	_air_warned = false
+	_dead_k = 0.0
+	world.desaturate = 0.0
+	hud.set_dark_vignette(0.0)
+	_cam_pos = start_pos + Vector3(0, 3.2, 7.4)
+	_cam_look = start_pos + Vector3(0, 1.1, -4)
+	cam.global_position = _cam_pos
+	if _death_from == Phase.COLLECT:
+		_time_left = GameData.COLLECT_TIME
+		_time_out_told = false
+		hud.set_timer(_time_left)
+	_set_phase(_death_from)
+	_death_active = false
+	GameState.save_game()
+	hud.toast("CHECKPOINT  ·  air refilled", Color(0.5, 0.9, 1.0))
 
 
 func _on_out_of_hearts() -> void:
@@ -402,7 +569,7 @@ func _on_out_of_hearts() -> void:
 		return
 	_set_phase(Phase.DEAD)
 	get_tree().paused = true
-	modal.open("OUT OF HEARTS", "The shore needs you, Yassine. Breathe, and try again.",
+	modal.open("OUT OF HEARTS", "The shore needs you, %s. Breathe, and try again." % GameState.display_name(),
 		[["TRY AGAIN", _retry, UiKit.TEAL], ["MAIN MENU", _to_menu, Color(0.6, 0.6, 0.7)]], UiKit.BAD)
 
 
@@ -503,7 +670,7 @@ func _next_sort_item() -> void:
 		_sort_card.visible = false
 		_set_phase(Phase.INTRO)
 		_sort_layer.visible = false
-		dialog.show_lines(lv.to_puzzle, _start_puzzle)
+		dialog.show_lines(lv.to_puzzle, _start_workbench)
 		return
 	_sort_card.visible = true
 	_sort_item = String(_sort_queue.pop_front())
@@ -568,10 +735,111 @@ func _choose_bin(bin_id: String) -> void:
 
 
 # ================================================================ atelier
+func _build_workbench() -> void:
+	var bench := Node3D.new()
+	bench.position = bench_pos
+	add_child(bench)
+	var wood := Mats.mat(Color(0.52, 0.38, 0.24), 0.85)
+	var dark := Mats.mat(Color(0.30, 0.22, 0.15), 0.9)
+	Mats.mi(Mats.box(Vector3(3.2, 0.12, 1.2)), wood, Vector3(0, 0.92, 0), bench)
+	for sx in [-1.45, 1.45]:
+		for sz in [-0.5, 0.5]:
+			Mats.mi(Mats.box(Vector3(0.1, 0.9, 0.1)), dark, Vector3(sx, 0.45, sz), bench)
+	Mats.mi(Mats.box(Vector3(3.0, 0.06, 1.0)), dark, Vector3(0, 0.25, 0), bench)
+	var lamp := OmniLight3D.new()
+	lamp.light_color = Color(1.0, 0.86, 0.62)
+	lamp.light_energy = 1.6
+	lamp.omni_range = 4.5
+	lamp.position = Vector3(0, 2.2, 0.8)
+	bench.add_child(lamp)
+	var sign := Mats.label3d("WORKBENCH", 70, Color(1.0, 0.86, 0.45), bench, Vector3(0, 1.9, -0.55))
+	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	# l'établi est un vrai meuble : on ne passe pas à travers
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(3.2, 1.0, 1.2)
+	col.shape = bs
+	col.position = Vector3(0, 0.5, 0)
+	body.add_child(col)
+	bench.add_child(body)
+
+
+## Atelier : la caméra rejoint l'établi où apparaissent, un par un,
+## les objets RÉELLEMENT ramassés sur ce rivage (GameState.inventory).
+func _start_workbench() -> void:
+	_set_phase(Phase.WORKBENCH)
+	hud.set_objective("Your recovered %s" % String(lv.material_label).to_lower())
+	boy.velocity = Vector3.ZERO
+	var stand := bench_pos + Vector3(2.1, 0, 0.3)
+	stand.y = world.height_at(stand.x, stand.z) + 0.05
+	var tw := create_tween()
+	tw.tween_property(boy, "global_position", stand, 1.2).set_trans(Tween.TRANS_SINE)
+	boy.visual.rotation.y = PI * 0.5
+	var inv: Array = GameState.level_inventory(level_id)
+	if inv.is_empty():
+		inv = (lv.collect as Array).duplicate()
+	var n: int = inv.size()
+	for i in n:
+		var id: String = String(inv[i])
+		var slot := Node3D.new()
+		var x: float = -1.25 + 2.5 * (float(i) / float(maxi(1, n - 1)))
+		slot.position = bench_pos + Vector3(x, 0.98, 0.15)
+		add_child(slot)
+		var model := ItemFactory.build(id)
+		model.scale = Vector3.ONE * 0.01
+		slot.add_child(model)
+		var tag := Mats.label3d(String(GameData.item(id).get("label", id)), 30, Color(1, 1, 1), slot, Vector3(0, -0.02, 0.5), false)
+		tag.rotation_degrees.x = -50
+		tag.outline_size = 8
+		tag.outline_modulate = Color(0, 0, 0, 0.85)
+		tag.modulate.a = 0.0
+		var rt := create_tween()
+		rt.tween_interval(0.5 + i * 0.35)
+		rt.tween_property(model, "scale", Vector3.ONE * 1.05, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		rt.parallel().tween_property(tag, "modulate:a", 1.0, 0.4)
+		if sfx != null:
+			rt.tween_callback(Callable(sfx, "pickup"))
+		_bench_items.append(slot)
+	var t2 := create_tween()
+	t2.tween_interval(0.9 + n * 0.35)
+	t2.tween_callback(func(): dialog.show_lines([["MIMA", GameData.WORKBENCH_LINE]], _start_puzzle))
+
+
 func _start_puzzle() -> void:
 	_set_phase(Phase.PUZZLE)
 	hud.set_objective("Recycle: give your %s a new life" % String(lv.material_label).to_lower())
-	puzzle.run(level_id)
+	var inv: Array = GameState.level_inventory(level_id)
+	if inv.is_empty():
+		inv = (lv.collect as Array).duplicate()
+	puzzle.run(level_id, inv)
+
+
+func _on_step_completed(_id: String) -> void:
+	_steps += 1
+	_update_restoration()
+	# l'établi montre la transformation : les objets se tassent à chaque étape
+	var n_steps: int = maxi(1, (lv.steps as Array).size())
+	var k: float = 1.0 - 0.6 * float(_steps) / float(n_steps)
+	for s in _bench_items:
+		if not is_instance_valid(s):
+			continue
+		var node: Node3D = s
+		var tw := create_tween()
+		tw.tween_property(node, "scale", Vector3(1.0, k, 1.0), 0.35).set_trans(Tween.TRANS_SINE)
+
+
+## Étape « poser dans la zone de travail » : l'objet correspondant saute.
+func _on_item_placed(index: int) -> void:
+	if index < 0 or index >= _bench_items.size():
+		return
+	if not is_instance_valid(_bench_items[index]):
+		return
+	var node: Node3D = _bench_items[index]
+	var y0: float = node.position.y
+	var tw := create_tween()
+	tw.tween_property(node, "position:y", y0 + 0.35, 0.15).set_ease(Tween.EASE_OUT)
+	tw.tween_property(node, "position:y", y0, 0.25).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 
 func _on_puzzle_finished() -> void:
@@ -579,9 +847,17 @@ func _on_puzzle_finished() -> void:
 	hud.set_objective("New life!")
 	var res: Dictionary = GameState.complete_level(level_id)
 	world.set_local_restoration(float(lv.r_to))
+	for s in _bench_items:
+		if not is_instance_valid(s):
+			continue
+		var node: Node3D = s
+		var ft := create_tween()
+		ft.tween_property(node, "scale", Vector3.ONE * 0.01, 0.4)
+		ft.tween_callback(node.queue_free)
+	_bench_items.clear()
 	_reward_node = ItemFactory.build_reward(String(lv.reward))
 	add_child(_reward_node)
-	_reward_node.global_position = station_pos + Vector3(0, 1.2, 2.2)
+	_reward_node.global_position = bench_pos + Vector3(0, 1.45, 0.1)
 	_reward_node.scale = Vector3.ONE * 0.01
 	var glow := OmniLight3D.new()
 	glow.light_color = Color(0.5, 0.85, 1.0)
@@ -668,7 +944,7 @@ func _demo_skip() -> void:
 	match phase:
 		Phase.COLLECT:
 			for c in collectibles:
-				if not c.taken:
+				if not c.taken and not bool(c.bad):
 					_take(c)
 		Phase.TO_STATION:
 			_start_sort()

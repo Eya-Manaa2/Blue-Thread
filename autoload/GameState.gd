@@ -1,13 +1,15 @@
 extends Node
 ## ============================================================
 ##  GameState — BLUE THREAD: THE LAST BLUE
-##  Score, cœurs, oxygène, restauration locale (histoire) et statistiques.
+##  Profil joueur (nom + avatar), score, cœurs, oxygène, inventaire réel
+##  par niveau, restauration LOCALE (histoire) et sauvegarde user://.
 ##
 ##  Contrat d'équipe conservé :
 ##   signal sort_completed(item_id, selected_bin, reaction_ms)
 ##   -> Main.gd le branche sur OnlineService (submit_sort_v2 + niveau).
-##  La restauration LOCALE (0/33/67/100, progression de l'histoire) est
-##  distincte de la valeur GLOBALE du serveur (OnlineService.ocean_percent).
+##  La restauration LOCALE (0/33/67/100) est distincte de la valeur
+##  GLOBALE du serveur (OnlineService.ocean_percent).
+##  Rien de personnel n'est envoyé au serveur : le nom reste sur l'appareil.
 ## ============================================================
 
 signal sort_completed(item_id: String, selected_bin: String, reaction_ms: int)
@@ -17,11 +19,13 @@ signal air_changed(air: float)
 signal restoration_changed(percent: float)
 signal heart_lost(reason: String)
 signal out_of_hearts
+signal profile_changed
 
+const SAVE_PATH := "user://blue_thread_save.cfg"
 const MAX_HEARTS := 3
 const MAX_AIR := 100.0
-const AIR_DRAIN := 0.45            # par seconde (le prompt demande 0,35 à 0,6)
-const AIR_DRAIN_DEMO := 0.12
+const AIR_DRAIN := 1.0             # règle stricte : 1 unité d'oxygène par seconde d'exploration
+const AIR_DRAIN_DEMO := 1.0        # même règle en mode jury
 
 const PTS_SORT_OK := 10
 const PTS_SORT_BAD := -5
@@ -36,7 +40,11 @@ var current_level: String = ""
 var demo_mode: bool = false
 var rewards: Array = []
 var completed: Array = []
+var inventory: Dictionary = {}          # level_id -> [item_id, ...] (objets UTILES réellement ramassés)
 var stats: Dictionary = {}
+var player_name: String = ""
+var avatar_id: int = -1
+var portrait: Texture2D = null          # portrait de l'avatar (généré à la validation du profil)
 var _level_snapshot: Dictionary = {}
 
 
@@ -44,24 +52,69 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	ensure_inputs()
 	reset_stats()
+	load_game()
 
 
 func reset_stats() -> void:
-	stats = {"correct": 0, "wrong": 0, "collected": 0, "steps": 0, "hearts_lost": 0,
-		"start_msec": Time.get_ticks_msec(), "per_level": {}}
+	stats = {"correct": 0, "wrong": 0, "collected": 0, "steps": 0, "hearts_lost": 0, "deaths": 0,
+		"distractors": 0, "start_msec": Time.get_ticks_msec(), "per_level": {}}
 
 
+func display_name() -> String:
+	return player_name if player_name != "" else "Keeper"
+
+
+# ------------------------------------------------------------ profil
+## Nom : 2 à 20 caractères visibles, lettres (accents et arabe compris),
+## espaces, apostrophes, tirets et points.
+static func validate_name(raw: String) -> Dictionary:
+	var n: String = raw.strip_edges()
+	while n.contains("  "):
+		n = n.replace("  ", " ")
+	if n.length() < 2:
+		return {"ok": false, "name": n, "error": "Please enter at least 2 characters."}
+	if n.length() > 20:
+		return {"ok": false, "name": n, "error": "20 characters maximum."}
+	var letters := 0
+	for i in n.length():
+		var c: String = n[i]
+		var code: int = n.unicode_at(i)
+		var is_letter: bool = c.to_upper() != c.to_lower() or (code >= 0x0600 and code <= 0x06FF)
+		if is_letter:
+			letters += 1
+		elif not (c == " " or c == "'" or c == "-" or c == "." or code == 0x2019):
+			return {"ok": false, "name": n, "error": "Use letters, spaces, apostrophes or hyphens only."}
+	if letters < 2:
+		return {"ok": false, "name": n, "error": "Your name needs at least 2 letters."}
+	return {"ok": true, "name": n, "error": ""}
+
+
+func set_profile(name_in: String, avatar: int) -> void:
+	player_name = name_in
+	avatar_id = clampi(avatar, 0, GameData.AVATARS.size() - 1)
+	save_game()
+	profile_changed.emit()
+
+
+func has_profile() -> bool:
+	return player_name != "" and avatar_id >= 0
+
+
+# ------------------------------------------------------------ partie
 func new_game() -> void:
 	score = 0
 	hearts = MAX_HEARTS
 	air = MAX_AIR
 	rewards.clear()
 	completed.clear()
+	inventory.clear()
+	current_level = ""
 	reset_stats()
 	set_local_restoration(0.0)
 	score_changed.emit(score, 0, "")
 	hearts_changed.emit(hearts)
 	air_changed.emit(air)
+	save_game()
 
 
 func start_level(level_id: String) -> void:
@@ -69,11 +122,13 @@ func start_level(level_id: String) -> void:
 	var lv: Dictionary = GameData.level(level_id)
 	hearts = MAX_HEARTS
 	air = MAX_AIR
+	inventory[level_id] = []
 	set_local_restoration(float(lv.get("r_from", 0.0)))
 	_level_snapshot = {"score": score, "correct": stats.correct, "wrong": stats.wrong,
 		"collected": stats.collected, "steps": stats.steps, "msec": Time.get_ticks_msec()}
 	hearts_changed.emit(hearts)
 	air_changed.emit(air)
+	save_game()
 
 
 ## Rejouer un niveau : on revient au score du début du niveau.
@@ -95,16 +150,27 @@ func add_score(points: int, reason: String) -> void:
 
 func collect(item_id: String) -> void:
 	stats.collected += 1
+	if not inventory.has(current_level):
+		inventory[current_level] = []
+	(inventory[current_level] as Array).append(item_id)
 	add_score(PTS_COLLECT, "collect")
+	save_game()
 
 
-func step_done(step_id: String) -> void:
+func level_inventory(level_id: String) -> Array:
+	return inventory.get(level_id, [])
+
+
+func distractor_picked() -> void:
+	stats.distractors += 1
+
+
+func step_done(_step_id: String) -> void:
 	stats.steps += 1
 	add_score(PTS_STEP, "step")
 
 
-## Tri d'un objet. Le résultat local est immédiat (jeu fluide hors ligne) ;
-## le serveur revérifie de son côté via OnlineService.
+## Tri d'un objet. Le résultat local est immédiat ; le serveur revérifie via OnlineService.
 func sort_item(item_id: String, selected_bin: String, reaction_ms: int) -> Dictionary:
 	var it: Dictionary = GameData.item(item_id)
 	var correct_bin: String = String(it.get("bin", ""))
@@ -132,16 +198,17 @@ func lose_heart(reason: String) -> void:
 		out_of_hearts.emit()
 
 
+## Oxygène : exactement 1 unité par seconde (delta en secondes, indépendant du framerate).
+## Renvoie true quand l'air vient d'atteindre zéro.
 func drain_air(delta: float) -> bool:
-	## Renvoie true quand l'air vient d'atteindre zéro.
 	var rate: float = AIR_DRAIN_DEMO if demo_mode else AIR_DRAIN
-	air = maxf(0.0, air - rate * delta)
+	air = maxf(air - rate * delta, 0.0)
 	air_changed.emit(air)
 	return air <= 0.0
 
 
-func refill_air() -> void:
-	air = MAX_AIR
+func refill_air(amount: float = MAX_AIR) -> void:
+	air = clampf(amount, 0.0, MAX_AIR)
 	air_changed.emit(air)
 
 
@@ -172,6 +239,7 @@ func complete_level(level_id: String) -> Dictionary:
 	}
 	res["stars"] = 1 + int(hearts >= 2) + int(res.wrong == 0 and hearts == MAX_HEARTS)
 	stats.per_level[level_id] = res
+	save_game()
 	return res
 
 
@@ -182,6 +250,44 @@ func accuracy() -> float:
 
 func play_seconds() -> float:
 	return float(Time.get_ticks_msec() - int(stats.start_msec)) / 1000.0
+
+
+# ------------------------------------------------------------ sauvegarde
+## Prochain rivage à jouer (ou "ending" si tout est fini).
+func next_level() -> String:
+	for id in GameData.LEVEL_ORDER:
+		if not completed.has(id):
+			return id
+	return "ending"
+
+
+func has_progress() -> bool:
+	return completed.size() > 0 and completed.size() < GameData.LEVEL_ORDER.size()
+
+
+func save_game() -> void:
+	var cf := ConfigFile.new()
+	cf.set_value("profile", "name", player_name)
+	cf.set_value("profile", "avatar", avatar_id)
+	cf.set_value("progress", "restoration", local_restoration)
+	cf.set_value("progress", "completed", completed)
+	cf.set_value("progress", "rewards", rewards)
+	cf.set_value("progress", "score", score)
+	cf.set_value("progress", "inventory", inventory)
+	cf.save(SAVE_PATH)
+
+
+func load_game() -> void:
+	var cf := ConfigFile.new()
+	if cf.load(SAVE_PATH) != OK:
+		return
+	player_name = String(cf.get_value("profile", "name", ""))
+	avatar_id = int(cf.get_value("profile", "avatar", -1))
+	local_restoration = float(cf.get_value("progress", "restoration", 0.0))
+	completed = cf.get_value("progress", "completed", [])
+	rewards = cf.get_value("progress", "rewards", [])
+	score = int(cf.get_value("progress", "score", 0))
+	inventory = cf.get_value("progress", "inventory", {})
 
 
 ## Les actions clavier sont créées ici : project.godot n'a pas de carte d'entrées.

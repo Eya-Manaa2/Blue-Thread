@@ -19,6 +19,7 @@ var _i: int = 0
 var _on_done: Callable
 var _typing: Tween
 var active: bool = false
+var radio_mode: bool = true      # Mima parle par la radio (false : en personne, à la fin)
 
 
 class Radio extends Control:
@@ -92,11 +93,19 @@ func show_lines(lines: Array, on_done: Callable = Callable()) -> void:
 func _show_current() -> void:
 	var line: Array = _lines[_i]
 	var who: String = String(line[0])
-	_name.text = "MIMA  ·  RADIO" if who == "MIMA" else who
-	UiKit.set_label_color(_name, UiKit.TEAL if who == "MIMA" else Color(1.0, 0.82, 0.45))
-	_portrait_boy.visible = who != "MIMA"
-	_portrait_radio.visible = who == "MIMA"
-	_text.text = String(line[1])
+	var is_mima: bool = who == "MIMA"
+	if is_mima:
+		_name.text = "MIMA  ·  RADIO" if radio_mode else "MIMA"
+	elif who == "PLAYER" or who == "YASSINE":
+		_name.text = GameState.display_name().to_upper()
+	else:
+		_name.text = who
+	UiKit.set_label_color(_name, UiKit.TEAL if is_mima else Color(1.0, 0.82, 0.45))
+	_portrait_boy.visible = not is_mima
+	_portrait_radio.visible = is_mima
+	if not is_mima and GameState.portrait != null:
+		_portrait_boy.texture = GameState.portrait
+	_text.text = String(line[1]).replace("{name}", GameState.display_name())
 	_text.visible_ratio = 0.0
 	if _typing != null and _typing.is_valid():
 		_typing.kill()

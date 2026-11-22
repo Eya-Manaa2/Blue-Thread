@@ -18,6 +18,7 @@ var phase: float = 0.0
 var r: float = 0.0               # restauration affichée (0..1), lissée
 var r_target: float = 0.0
 var global_ocean: float = 0.0    # 0..1 (serveur)
+var desaturate: float = 0.0      # 0..1 : scène de mort (couleurs qui s'éteignent)
 var camera: Camera3D = null      # donné par le contrôleur (pour le fond peint)
 
 var env: Environment
@@ -350,6 +351,97 @@ func _barrel(x: float, z: float, tipped: bool) -> void:
 		_place(n, x, z, -0.05)
 
 
+## Obstacles PHYSIQUES (StaticBody3D + collision simple) : le joueur s'arrête,
+## glisse le long ou contourne. Placés loin des points importants.
+func add_obstacles(keep_clear: Array) -> void:
+	var placed: Array = []
+	var tries := 0
+	var n_barrels := 0
+	var n_branches := 0
+	while (n_barrels < 9 or n_branches < 6) and tries < 400:
+		tries += 1
+		var x := _rng.randf_range(-36, 36)
+		var z := shore_z(x) + _rng.randf_range(1.5, 20.0)
+		var p := Vector3(x, 0, z)
+		var ok := true
+		# une branche (jusqu'à 4,4 m) dépasse de son centre : marge plus grande
+		var clear_r: float = 3.6 if n_barrels < 9 else 5.4
+		for k in keep_clear:
+			var kp: Vector3 = k
+			if Vector2(kp.x - x, kp.z - z).length() < clear_r:
+				ok = false
+				break
+		# couloir libre entre le départ et la station de tri
+		if absf(x) < 3.5 and z > 2.0 and z < 16.0:
+			ok = false
+		for q in placed:
+			var qp: Vector3 = q
+			if Vector2(qp.x - x, qp.z - z).length() < 4.2:
+				ok = false
+				break
+		if not ok:
+			continue
+		placed.append(p)
+		if n_barrels < 9:
+			_physical_barrel(x, z, n_barrels % 3 == 2)
+			n_barrels += 1
+		else:
+			_physical_branch(x, z)
+			n_branches += 1
+
+
+func _physical_barrel(x: float, z: float, tipped: bool) -> void:
+	var body := StaticBody3D.new()
+	body.name = "Barrel"
+	var vis := Node3D.new()
+	body.add_child(vis)
+	var rust := Mats.mat(Color(0.48, 0.24, 0.13), 0.9, 0.4)
+	var rust2 := Mats.mat(Color(0.33, 0.17, 0.10), 0.9, 0.4)
+	Mats.mi(Mats.cyl(0.42, 0.42, 1.2, 18), rust, Vector3(0, 0.6, 0), vis)
+	for y in [0.15, 0.6, 1.05]:
+		Mats.mi(Mats.cyl(0.435, 0.435, 0.06, 18), rust2, Vector3(0, y, 0), vis)
+	var col := CollisionShape3D.new()
+	var cs := CylinderShape3D.new()
+	cs.radius = 0.44
+	cs.height = 1.2
+	col.shape = cs
+	col.position = Vector3(0, 0.6, 0)
+	body.add_child(col)
+	if tipped:
+		var yaw := _rng.randf_range(0, 360)
+		vis.rotation_degrees = Vector3(90, 0, 0)
+		vis.position = Vector3(0, 0.42, -0.6)
+		col.rotation_degrees = Vector3(90, 0, 0)
+		col.position = Vector3(0, 0.42, 0)
+		body.rotation_degrees.y = yaw
+	else:
+		body.rotation_degrees.y = _rng.randf_range(0, 360)
+	_place(body, x, z, -0.05)
+
+
+func _physical_branch(x: float, z: float) -> void:
+	var body := StaticBody3D.new()
+	body.name = "Branch"
+	var wood := Mats.mat(Color(0.30, 0.24, 0.18), 0.95)
+	var length := _rng.randf_range(3.2, 4.4)
+	var trunk := Mats.mi(Mats.capsule(0.36, length), wood, Vector3(0, 0.36, 0), body, Vector3(0, 0, 90))
+	trunk.scale = Vector3(1.0, 1.0, 0.92)
+	for k in 4:
+		var bx: float = -length * 0.35 + k * length * 0.22
+		var tw := Mats.mi(Mats.cyl(0.03, 0.08, _rng.randf_range(0.7, 1.3), 6), wood, Vector3(bx, 0.55, 0), body)
+		tw.rotation_degrees = Vector3(_rng.randf_range(-50, 50), 0, _rng.randf_range(-40, 40))
+	# boîte haute de 1,1 m : un tronc rond et bas se laisserait escalader par
+	# le CharacterBody3D (testé) ; ici le joueur s'arrête et contourne.
+	var col := CollisionShape3D.new()
+	var bx := BoxShape3D.new()
+	bx.size = Vector3(length + 0.5, 1.1, 0.75)
+	col.shape = bx
+	col.position = Vector3(0, 0.55, 0)
+	body.add_child(col)
+	body.rotation_degrees.y = _rng.randf_range(0, 180)
+	_place(body, x, z, 0.0)
+
+
 func _rock(x: float, z: float, s: float) -> void:
 	var m := Mats.mat(Color(0.34, 0.31, 0.28).lerp(Color(_tint.sand), 0.25), 0.9)
 	var n := Mats.mi(Mats.rock(1.0, _rng.randi_range(1, 30), 0.65), m, Vector3.ZERO, self, Vector3(0, _rng.randf_range(0, 360), 0), Vector3(s, s, s) * _rng.randf_range(0.8, 1.2))
@@ -460,12 +552,6 @@ func _build_common_props() -> void:
 		if absf(x) < 7.0 and z > 2.0 and z < 15.0:
 			continue
 		_rock(x, z, _rng.randf_range(0.5, 1.4))
-	for i in 7:
-		var x := _rng.randf_range(-38, 38)
-		var z := shore_z(x) + _rng.randf_range(2.0, 16.0)
-		if absf(x) < 6.0 and z < 15.0:
-			x += 9.0
-		_barrel(x, z, i % 3 == 0)
 	for i in 6:
 		var x := _rng.randf_range(-40, 40)
 		_driftwood(x, shore_z(x) + _rng.randf_range(0.5, 5.0))
@@ -735,7 +821,7 @@ func _apply(force: bool) -> void:
 	sky_mat.sky_energy_multiplier = lerpf(0.9, 1.05, k)
 	env.fog_light_color = Color(t.fog).lerp(Color(0.72, 0.84, 0.94), k)
 	env.fog_density = lerpf(0.0095, 0.0028, k)
-	env.adjustment_saturation = lerpf(0.82, 1.12, k)
+	env.adjustment_saturation = lerpf(0.82, 1.12, k) * (1.0 - 0.75 * desaturate)
 	env.adjustment_contrast = lerpf(1.08, 1.04, k)
 	sun.light_color = Color(t.sun).lerp(Color(1.0, 0.96, 0.88), k)
 	sun.light_energy = lerpf(1.15, 1.2, k)
@@ -746,9 +832,8 @@ func _apply(force: bool) -> void:
 	sea_mat.set_shader_parameter("sky_col", sky_mat.sky_horizon_color)
 	terrain_mat.set_shader_parameter("restoration", k)
 	if matte_mat != null:
-		var a: float = 1.0 - smoothstep(0.45, 0.92, r)
-		matte_mat.albedo_color = Color(1, 1, 1, a).lerp(Color(1.0, 1.0, 1.0, a), k)
-		matte.visible = a > 0.01
+		# fond peint toujours visible ; il s'éclaircit légèrement avec la restauration
+		matte_mat.albedo_color = Color(0.92, 0.9, 0.88, 1.0).lerp(Color(1.05, 1.05, 1.08, 1.0), k)
 	for s in _smokes:
 		var p: CPUParticles3D = s[0]
 		p.emitting = r < float(s[1])
