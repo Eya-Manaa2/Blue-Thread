@@ -13,7 +13,7 @@ Légende : OK = vu fonctionner dans Godot 4.7.2 sur le PC (fenêtre de jeu, édi
 | HUD « KEEPER: EYA », chronomètre, oxygène : chrono et air baissent ensemble de 1/s (180 s / 100 % → 2:58 / 97 % ; 2:47 / 86 %) | OK |
 | Objet piège (canette) : « -5 s · NOT PAPER: METAL DRINK CAN » + explication, ne compte pas (0/5) | OK |
 | Recharge O2 : « AIR REFILLED », jauge réelle remise à 100 | OK |
-| Barils et branches bloquent le joueur | OK (une branche ronde pouvait être escaladée → collision remplacée par une boîte de 1,1 m ; revérifié : le joueur s'arrête et contourne) |
+| Barils et branches bloquent le joueur | OK (une branche ronde pouvait être escaladée → collision remplacée par une boîte de 1,1 m ; vérifié en partie : le joueur s'est arrêté devant une branche, contournement non filmé en entier) |
 | Mort à 0 % : contrôles gelés, chrono figé, effondrement au sol, désaturation + vignette, « Mima... I have failed you. » avec le nom et le portrait, puis MISSION FAILED / Your promise is not over. | OK (1er essai : caméra proche dans un obstacle → choix d'angle par rayon ajouté, à revérifier) |
 | Retry from checkpoint : retour à l'entrée, air 100 %, chrono remis, cœurs gardés, couleurs normales | OK |
 | Mode jury (J au menu, F2) : collecte sautée, bonus de temps | OK |
