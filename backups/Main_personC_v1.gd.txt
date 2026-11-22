@@ -1,0 +1,222 @@
+extends Node3D
+## ============================================================
+##  Main — Personne C (seule personne qui modifie Main.tscn)
+##  Assemble les scènes de l'équipe et branche les contrats :
+##   A -> C : sort_completed(item_id, selected_bin, reaction_ms)
+##   C -> B : set_ocean_progress(percent)   (0 à 100)
+##  Tant que les scènes de A et B n'existent pas, Main affiche un
+##  monde de test et un banc d'essai réseau (F1).
+## ============================================================
+
+const ENV_SCENE := "res://scenes/Environment3D.tscn"      # Personne B
+const SORT_SCENE := "res://scenes/SortingStation.tscn"    # Personne A
+const HUD_SCENE := "res://scenes/ui/HUD.tscn"             # Personne C
+
+const ITEMS := ["cotton_shirt", "jeans", "fleece", "sport_leggings", "pet_bottle",
+	"pet_tray", "blended_sweater", "blended_socks", "oily_bottle", "paint_stained_shirt"]
+const BINS := ["cotton", "polyester", "pet", "mixed", "reject"]
+
+var env_node: Node = null
+var sorting_node: Node = null
+var ocean_target: Object = null      # l'objet qui possède set_ocean_progress()
+var _fallback_sea: StandardMaterial3D
+var _cube: MeshInstance3D
+var _bench: PanelContainer
+var _item_pick: OptionButton
+var _log: Label
+
+
+func _ready() -> void:
+	# 1) Monde 3D de B (ou monde de test)
+	if ResourceLoader.exists(ENV_SCENE):
+		env_node = (load(ENV_SCENE) as PackedScene).instantiate()
+		add_child(env_node)
+	else:
+		_build_test_world()
+
+	# 2) Station de tri de A
+	if ResourceLoader.exists(SORT_SCENE):
+		sorting_node = (load(SORT_SCENE) as PackedScene).instantiate()
+		add_child(sorting_node)
+
+	# 3) HUD réseau
+	add_child((load(HUD_SCENE) as PackedScene).instantiate())
+
+	# 4) Contrat A -> C
+	_connect_sort_signal()
+
+	# 5) Contrat C -> B
+	ocean_target = _find_with_method(self, "set_ocean_progress")
+	OnlineService.global_progress_changed.connect(_on_global_progress)
+	if OnlineService.ocean_percent >= 0.0:
+		_on_global_progress(OnlineService.ocean_percent)
+
+	# 6) Banc d'essai réseau (visible tant que la station de A n'est pas là)
+	_build_bench()
+	_bench.visible = sorting_node == null
+
+
+func _connect_sort_signal() -> void:
+	var sources: Array = []
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs != null and gs.has_signal("sort_completed"):
+		sources.append(gs)
+	if sorting_node != null:
+		_collect_with_signal(sorting_node, "sort_completed", sources)
+	for s in sources:
+		var src: Object = s
+		if not src.is_connected("sort_completed", OnlineService.submit_sort):
+			src.connect("sort_completed", OnlineService.submit_sort)
+	print("[Main] Sources sort_completed branchées : ", sources.size())
+
+
+func _collect_with_signal(n: Node, sig: String, out: Array) -> void:
+	if n.has_signal(sig):
+		out.append(n)
+	for c in n.get_children():
+		_collect_with_signal(c, sig, out)
+
+
+func _find_with_method(n: Node, method: String) -> Object:
+	for c in n.get_children():
+		if c.has_method(method):
+			return c
+		var deeper: Object = _find_with_method(c, method)
+		if deeper != null:
+			return deeper
+	return null
+
+
+func _on_global_progress(percent: float) -> void:
+	if ocean_target != null:
+		ocean_target.call("set_ocean_progress", percent)
+	else:
+		set_ocean_progress(percent)
+
+
+## Version de secours (monde de test) : la mer passe du gris au turquoise
+func set_ocean_progress(percent: float) -> void:
+	if _fallback_sea == null:
+		return
+	var k: float = clampf(percent / 100.0, 0.0, 1.0)
+	var tw := create_tween()
+	tw.tween_property(_fallback_sea, "albedo_color", Color(0.38, 0.35, 0.3).lerp(Color(0.05, 0.65, 0.8), k), 1.0)
+
+
+func _process(delta: float) -> void:
+	if _cube != null:
+		_cube.rotate_y(delta * 0.8)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.is_pressed() and not event.is_echo():
+		var k: InputEventKey = event
+		if k.keycode == KEY_F1:
+			_bench.visible = not _bench.visible
+
+
+# ------------------------------------------------------------
+#  Monde de test (preuve H0 : « le navigateur affiche un cube 3D »)
+# ------------------------------------------------------------
+func _build_test_world() -> void:
+	var we := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	sky.sky_material = ProceduralSkyMaterial.new()
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	we.environment = env
+	add_child(we)
+
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-45, -30, 0)
+	sun.shadow_enabled = true
+	add_child(sun)
+
+	var cam := Camera3D.new()
+	cam.position = Vector3(0, 4, 8)
+	add_child(cam)
+	cam.look_at(Vector3(0, 0.5, 0), Vector3.UP)
+	cam.make_current()
+
+	var sea := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(60, 60)
+	sea.mesh = pm
+	_fallback_sea = StandardMaterial3D.new()
+	_fallback_sea.albedo_color = Color(0.38, 0.35, 0.3)
+	_fallback_sea.roughness = 0.2
+	sea.material_override = _fallback_sea
+	sea.position = Vector3(0, -0.5, -10)
+	add_child(sea)
+
+	_cube = MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1.5, 1.5, 1.5)
+	_cube.mesh = bm
+	var cm := StandardMaterial3D.new()
+	cm.albedo_color = Color(0.1, 0.5, 0.95)
+	_cube.material_override = cm
+	_cube.position = Vector3(0, 0.8, 0)
+	add_child(_cube)
+
+
+# ------------------------------------------------------------
+#  Banc d'essai réseau : simule le signal de A sans attendre son code
+# ------------------------------------------------------------
+func _build_bench() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 11
+	add_child(layer)
+	_bench = PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.08, 0.14, 0.9)
+	sb.set_corner_radius_all(12)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	_bench.add_theme_stylebox_override("panel", sb)
+	_bench.position = Vector2(14, 100)
+	layer.add_child(_bench)
+	var v := VBoxContainer.new()
+	_bench.add_child(v)
+	var title := Label.new()
+	title.text = "BANC D'ESSAI RÉSEAU (F1)\nObjet, puis bac : envoie un vrai tri au serveur"
+	v.add_child(title)
+	_item_pick = OptionButton.new()
+	for it in ITEMS:
+		_item_pick.add_item(String(it))
+	_item_pick.focus_mode = Control.FOCUS_NONE
+	v.add_child(_item_pick)
+	var row := HBoxContainer.new()
+	v.add_child(row)
+	for b in BINS:
+		var btn := Button.new()
+		btn.text = String(b)
+		btn.focus_mode = Control.FOCUS_NONE
+		var bin_name: String = b
+		btn.pressed.connect(func(): _bench_send(bin_name))
+		row.add_child(btn)
+	var refresh := Button.new()
+	refresh.text = "Relire l'océan maintenant"
+	refresh.focus_mode = Control.FOCUS_NONE
+	refresh.pressed.connect(func(): OnlineService.poll_now())
+	v.add_child(refresh)
+	_log = Label.new()
+	_log.text = ""
+	_log.add_theme_font_size_override("font_size", 14)
+	v.add_child(_log)
+	OnlineService.sort_result.connect(_on_bench_result)
+
+
+func _on_bench_result(item: String, ok: bool, correct_bin: String) -> void:
+	_log.text = "Réponse serveur : %s → %s (bon bac : %s)" % [item, "JUSTE" if ok else "FAUX", correct_bin]
+
+
+func _bench_send(bin_name: String) -> void:
+	var item: String = _item_pick.get_item_text(_item_pick.selected)
+	var ms: int = randi_range(600, 2500)
+	OnlineService.submit_sort(item, bin_name, ms)
+	_log.text = "Envoyé : %s → %s (%d ms)…" % [item, bin_name, ms]

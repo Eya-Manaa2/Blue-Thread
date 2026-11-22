@@ -1,0 +1,12 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Builds web (régénérables depuis Godot : Projet > Exporter)
+exports/*
+!exports/.gdignore
+
+# Divers
+*.tmp
+.DS_Store
+Thumbs.db

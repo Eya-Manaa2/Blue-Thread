@@ -1,0 +1,211 @@
+extends CanvasLayer
+## ============================================================
+##  HUD réseau — Personne C
+##  Affiche la vérité sur la connexion : CONNECTÉ / HORS LIGNE,
+##  dernière synchro, océan global, aller-retour HTTP, statistiques.
+##  Tab : panneau statistiques  •  F9 : afficher « 5G vérifiée »
+##  (n'appuyer sur F9 qu'après avoir vérifié que le téléphone / le
+##   point d'accès est réellement en 5G)
+## ============================================================
+
+var _font: SystemFont
+var _status: Label
+var _sync: Label
+var _ocean_lbl: Label
+var _ocean_bar: ProgressBar
+var _rtt: Label
+var _net: Label
+var _session: Label
+var _stats_panel: PanelContainer
+var _stats_lbl: Label
+var _toast: Label
+var _toast_id: int = 0
+
+
+func _ready() -> void:
+	layer = 10
+	_font = SystemFont.new()
+	_font.font_names = PackedStringArray(["Segoe UI", "Arial", "Noto Sans", "Sans-Serif"])
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var theme := Theme.new()
+	theme.default_font = _font
+	theme.default_font_size = 18
+	root.theme = theme
+	add_child(root)
+
+	# Carte réseau en haut à droite
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", _style(Color(0.04, 0.07, 0.12, 0.82)))
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(card)
+	card.anchor_left = 1.0
+	card.anchor_right = 1.0
+	card.offset_left = -330
+	card.offset_right = -14
+	card.offset_top = 100
+	card.offset_bottom = 300
+	var v := VBoxContainer.new()
+	card.add_child(v)
+	_status = _label(v, "", 20, Color(1, 1, 1))
+	_sync = _label(v, "", 16, Color(0.85, 0.9, 1))
+	_ocean_lbl = _label(v, "", 18, Color(0.55, 0.85, 1))
+	_ocean_bar = ProgressBar.new()
+	_ocean_bar.min_value = 0
+	_ocean_bar.max_value = 100
+	_ocean_bar.show_percentage = false
+	_ocean_bar.custom_minimum_size = Vector2(0, 14)
+	var bg := _style(Color(0, 0, 0, 0.5))
+	var fill := _style(Color(0.1, 0.6, 0.95))
+	for sb in [bg, fill]:
+		sb.content_margin_top = 0
+		sb.content_margin_bottom = 0
+		sb.content_margin_left = 0
+		sb.content_margin_right = 0
+	_ocean_bar.add_theme_stylebox_override("background", bg)
+	_ocean_bar.add_theme_stylebox_override("fill", fill)
+	_ocean_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(_ocean_bar)
+	_rtt = _label(v, "", 16, Color(0.85, 0.9, 1))
+	_net = _label(v, "", 16, Color(0.6, 1.0, 0.6))
+	_session = _label(v, "", 12, Color(1, 1, 1, 0.5))
+
+	# Panneau statistiques (Tab)
+	_stats_panel = PanelContainer.new()
+	_stats_panel.add_theme_stylebox_override("panel", _style(Color(0.04, 0.07, 0.12, 0.9)))
+	_stats_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_stats_panel)
+	_stats_panel.anchor_left = 1.0
+	_stats_panel.anchor_right = 1.0
+	_stats_panel.offset_left = -330
+	_stats_panel.offset_right = -14
+	_stats_panel.offset_top = 310
+	_stats_panel.offset_bottom = 560
+	_stats_lbl = _label(_stats_panel, "", 16, Color(1, 1, 1))
+	_stats_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_stats_panel.visible = false
+
+	_toast = _label(root, "", 22, Color(1, 1, 1))
+	_toast.anchor_left = 0.0
+	_toast.anchor_right = 1.0
+	_toast.anchor_top = 1.0
+	_toast.anchor_bottom = 1.0
+	_toast.offset_top = -60
+	_toast.offset_bottom = -20
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.add_theme_constant_override("outline_size", 8)
+	_toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+
+	OnlineService.connection_changed.connect(func(_o: bool): _refresh())
+	OnlineService.stats_updated.connect(func(_s: Dictionary): _refresh())
+	OnlineService.sort_result.connect(_on_sort_result)
+	_refresh()
+
+
+func _style(c: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = c
+	s.set_corner_radius_all(12)
+	s.content_margin_left = 14
+	s.content_margin_right = 14
+	s.content_margin_top = 10
+	s.content_margin_bottom = 10
+	return s
+
+
+func _label(parent: Control, text: String, size: int, col: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", col)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(l)
+	return l
+
+
+func _process(_delta: float) -> void:
+	# La « dernière synchro » doit bouger en direct
+	var s: float = OnlineService.seconds_since_sync()
+	if s < 0.0:
+		_sync.text = "Dernière synchro : jamais"
+	else:
+		_sync.text = "Dernière synchro : il y a %.1f s" % s
+		if s > 8.0 and OnlineService.online:
+			_sync.add_theme_color_override("font_color", Color(1, 0.75, 0.3))
+		else:
+			_sync.add_theme_color_override("font_color", Color(0.85, 0.9, 1))
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.is_pressed() and not event.is_echo():
+		var k: InputEventKey = event
+		if k.keycode == KEY_TAB:
+			_stats_panel.visible = not _stats_panel.visible
+			_refresh()
+		elif k.keycode == KEY_F9:
+			OnlineService.verified_5g = not OnlineService.verified_5g
+			_refresh()
+
+
+func _refresh() -> void:
+	var os = OnlineService
+	if not os.is_configured():
+		_status.text = "● NON CONFIGURÉ"
+		_status.add_theme_color_override("font_color", Color(1, 0.7, 0.2))
+	elif os.online:
+		_status.text = "● CONNECTÉ"
+		_status.add_theme_color_override("font_color", Color(0.35, 1, 0.45))
+	else:
+		_status.text = "● HORS LIGNE — progression partagée en pause"
+		_status.add_theme_color_override("font_color", Color(1, 0.4, 0.35))
+
+	if os.ocean_percent >= 0.0:
+		_ocean_lbl.text = "Océan global : %d %%" % int(round(os.ocean_percent))
+		_ocean_bar.value = os.ocean_percent
+	else:
+		_ocean_lbl.text = "Océan global : indisponible"
+		_ocean_bar.value = 0
+
+	_rtt.text = ("Réseau (aller-retour HTTP) : %d ms" % os.rtt_ms) if os.rtt_ms >= 0 else "Réseau (aller-retour HTTP) : —"
+	if os.pending_count() > 0:
+		_rtt.text += "   •  %d tri(s) en attente" % os.pending_count()
+	# Ne jamais écrire « 5G » sans vérification réelle
+	_net.text = "Connexion : 5G vérifiée (point d'accès mobile)" if os.verified_5g else ""
+	_session.text = "Session : " + os.session_id
+
+	var st: Dictionary = os.stats
+	if st.is_empty():
+		_stats_lbl.text = "STATISTIQUES EN DIRECT\n\nAucune donnée reçue du serveur."
+		if os.last_error != "":
+			_stats_lbl.text += "\n\n" + os.last_error
+		return
+	var t: String = "STATISTIQUES EN DIRECT (base Supabase)\n\n"
+	t += "Tris enregistrés : %d\n" % int(st.get("total_events", 0))
+	t += "Tris justes : %d   •   Erreurs : %d\n" % [int(st.get("correct_events", 0)), int(st.get("wrong_events", 0))]
+	t += "Précision : %s %%\n" % str(st.get("accuracy", 0))
+	t += "Joueurs (sessions) : %d\n" % int(st.get("players", 0))
+	t += "Temps de réaction moyen : %d ms\n" % int(st.get("avg_reaction_ms", 0))
+	var errs = st.get("errors_by_material", {})
+	if errs is Dictionary and not (errs as Dictionary).is_empty():
+		t += "\nMatières les plus difficiles :\n"
+		for k in (errs as Dictionary).keys():
+			t += "  • %s : %d erreur(s)\n" % [str(k), int(errs[k])]
+	_stats_lbl.text = t
+
+
+func _on_sort_result(item_id: String, is_correct: bool, correct_bin: String) -> void:
+	if is_correct:
+		_show_toast("Serveur : tri validé ✔  (%s)" % item_id, Color(0.5, 1, 0.6))
+	else:
+		_show_toast("Serveur : mauvais bac — %s va dans « %s »" % [item_id, correct_bin], Color(1, 0.6, 0.5))
+
+
+func _show_toast(text: String, col: Color) -> void:
+	_toast_id += 1
+	var my_id: int = _toast_id
+	_toast.text = text
+	_toast.add_theme_color_override("font_color", col)
+	await get_tree().create_timer(2.5).timeout
+	if my_id == _toast_id:
+		_toast.text = ""

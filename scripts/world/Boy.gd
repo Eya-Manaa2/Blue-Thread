@@ -1,0 +1,197 @@
+extends "res://scripts/player.gd"
+## Yassine, « le gardien » (d'après CHARACTER_REFERENCE_Le_gardien.png) :
+## cheveux châtains en bataille, masque à gaz à filtre jaune, tuyau annelé
+## vers une bouteille O2 argent et jaune, veste beige, harnais jaune,
+## gants, genouillères, bottes, montre connectée au poignet.
+## Hérite du déplacement / de l'animation de marche de player.gd.
+
+var head: Node3D
+var mask_root: Node3D
+var face_under_mask: Node3D
+var wrist_screen: MeshInstance3D
+var tank_light: MeshInstance3D
+var _breath_t: float = 0.0
+var _torso: Node3D
+
+
+func _build_boy() -> void:
+	var skin := Mats.mat(Color(0.93, 0.72, 0.56), 0.55, 0.0, 0.2)
+	var hair := Mats.mat(Color(0.30, 0.17, 0.08), 0.75, 0.0, 0.25)
+	var hair_hi := Mats.mat(Color(0.42, 0.25, 0.12), 0.7, 0.0, 0.25)
+	var jacket := Mats.mat(Color(0.64, 0.54, 0.40), 0.92, 0.0, 0.18)
+	var jacket_lt := Mats.mat(Color(0.74, 0.65, 0.50), 0.92, 0.0, 0.18)
+	var shirt := Mats.mat(Color(0.27, 0.22, 0.17), 0.95)
+	var pants := Mats.mat(Color(0.33, 0.28, 0.20), 0.95, 0.0, 0.15)
+	var pad := Mats.mat(Color(0.17, 0.17, 0.18), 0.55)
+	var boot := Mats.mat(Color(0.36, 0.25, 0.16), 0.8, 0.0, 0.15)
+	var sole := Mats.mat(Color(0.12, 0.10, 0.09), 0.9)
+	var glove := Mats.mat(Color(0.19, 0.19, 0.20), 0.65)
+	var yellow := Mats.mat(Color(0.95, 0.74, 0.14), 0.6)
+	var strap := Mats.mat(Color(0.16, 0.15, 0.14), 0.8)
+	var belt := Mats.mat(Color(0.30, 0.20, 0.12), 0.7)
+	var metal := Mats.mat(Color(0.78, 0.80, 0.83), 0.28, 0.85)
+	var dark_metal := Mats.mat(Color(0.25, 0.26, 0.28), 0.4, 0.7)
+	var mask_m := Mats.mat(Color(0.20, 0.21, 0.22), 0.45, 0.1, 0.2)
+	var white := Mats.mat(Color(0.98, 0.98, 0.97), 0.3)
+	var iris := Mats.mat(Color(0.36, 0.22, 0.10), 0.3)
+	var black := Mats.mat(Color(0.03, 0.02, 0.02), 0.2)
+	var bag := Mats.mat(Color(0.30, 0.29, 0.22), 0.9)
+
+	# ---------------- jambes (pivot à la hanche)
+	_leg_l = Node3D.new()
+	_leg_l.position = Vector3(-0.11, 0.62, 0)
+	visual.add_child(_leg_l)
+	_leg_r = Node3D.new()
+	_leg_r.position = Vector3(0.11, 0.62, 0)
+	visual.add_child(_leg_r)
+	for leg in [_leg_l, _leg_r]:
+		var side: float = -1.0 if leg == _leg_l else 1.0
+		Mats.mi(Mats.capsule(0.1, 0.52), pants, Vector3(0, -0.22, 0), leg)
+		Mats.mi(Mats.box(Vector3(0.05, 0.13, 0.13)), pants, Vector3(0.1 * side, -0.12, -0.01), leg)
+		Mats.mi(Mats.sphere(0.085), pad, Vector3(0, -0.27, -0.075), leg, Vector3.ZERO, Vector3(1.05, 1.15, 0.6))
+		Mats.mi(Mats.cyl(0.105, 0.11, 0.17), boot, Vector3(0, -0.45, 0), leg)
+		Mats.mi(Mats.capsule(0.095, 0.32), boot, Vector3(0, -0.53, -0.05), leg, Vector3(90, 0, 0), Vector3(1.05, 1, 0.8))
+		Mats.mi(Mats.box(Vector3(0.2, 0.045, 0.34)), sole, Vector3(0, -0.6, -0.05), leg)
+		for k in 3:
+			Mats.mi(Mats.box(Vector3(0.12, 0.012, 0.012)), jacket_lt, Vector3(0, -0.43 - k * 0.04, -0.105), leg)
+
+	# ---------------- torse
+	_torso = Node3D.new()
+	visual.add_child(_torso)
+	Mats.mi(Mats.cyl(0.205, 0.205, 0.07), belt, Vector3(0, 0.66, 0), _torso)
+	Mats.mi(Mats.box(Vector3(0.07, 0.05, 0.02)), metal, Vector3(0, 0.66, -0.21), _torso)
+	Mats.mi(Mats.capsule(0.2, 0.52), shirt, Vector3(0, 0.88, 0), _torso)
+	var jk := Mats.mi(Mats.capsule(0.218, 0.5), jacket, Vector3(0, 0.9, 0.012), _torso)
+	jk.scale = Vector3(1.0, 1.0, 0.95)
+	Mats.mi(Mats.box(Vector3(0.12, 0.36, 0.04)), shirt, Vector3(0, 0.9, -0.2), _torso)
+	Mats.mi(Mats.torus(0.11, 0.19), jacket_lt, Vector3(0, 1.12, 0.01), _torso, Vector3.ZERO, Vector3(1, 0.7, 1))
+	Mats.mi(Mats.sphere(0.13), jacket, Vector3(0, 1.13, 0.15), _torso, Vector3.ZERO, Vector3(1.3, 0.7, 0.8))
+	for sx in [-1.0, 1.0]:
+		Mats.mi(Mats.box(Vector3(0.09, 0.08, 0.03)), jacket_lt, Vector3(0.12 * sx, 0.78, -0.205), _torso)
+		Mats.mi(Mats.box(Vector3(0.045, 0.42, 0.022)), yellow, Vector3(0.1 * sx, 0.96, -0.218), _torso, Vector3(0, 0, -6 * sx))
+		Mats.mi(Mats.box(Vector3(0.045, 0.42, 0.022)), strap, Vector3(0.12 * sx, 0.95, 0.205), _torso)
+	Mats.mi(Mats.box(Vector3(0.26, 0.04, 0.024)), yellow, Vector3(0, 1.0, -0.222), _torso)
+	Mats.mi(Mats.box(Vector3(0.05, 0.05, 0.03)), metal, Vector3(0, 1.0, -0.232), _torso)
+
+	# ---------------- sac + bouteille O2 + petite lumière
+	Mats.mi(Mats.box(Vector3(0.3, 0.34, 0.12)), bag, Vector3(0, 0.93, 0.24), _torso)
+	var tank := Node3D.new()
+	tank.position = Vector3(-0.05, 0.98, 0.37)
+	_torso.add_child(tank)
+	Mats.mi(Mats.cyl(0.105, 0.105, 0.46), metal, Vector3.ZERO, tank)
+	Mats.mi(Mats.sphere(0.105), metal, Vector3(0, 0.23, 0), tank, Vector3.ZERO, Vector3(1, 0.6, 1))
+	Mats.mi(Mats.sphere(0.105), metal, Vector3(0, -0.23, 0), tank, Vector3.ZERO, Vector3(1, 0.5, 1))
+	for y in [0.13, -0.14]:
+		Mats.mi(Mats.cyl(0.108, 0.108, 0.045), yellow, Vector3(0, y, 0), tank)
+	Mats.mi(Mats.cyl(0.03, 0.035, 0.09), dark_metal, Vector3(0, 0.32, 0), tank)
+	Mats.mi(Mats.torus(0.02, 0.045), dark_metal, Vector3(0, 0.36, 0), tank)
+	tank_light = Mats.mi(Mats.sphere(0.016), Mats.emissive(Color(0.3, 1.0, 0.75), 4.0), Vector3(0.06, 0.06, 0.088), tank)
+	var o2 := Mats.label3d("O2", 34, Color(0.12, 0.13, 0.15), tank, Vector3(0, -0.02, 0.107))
+	o2.pixel_size = 0.0028
+
+	# ---------------- bras (pivot à l'épaule)
+	_arm_l = Node3D.new()
+	_arm_l.position = Vector3(-0.275, 1.07, 0)
+	visual.add_child(_arm_l)
+	_arm_r = Node3D.new()
+	_arm_r.position = Vector3(0.275, 1.07, 0)
+	visual.add_child(_arm_r)
+	for arm in [_arm_l, _arm_r]:
+		Mats.mi(Mats.sphere(0.085), jacket, Vector3(0, 0.0, 0), arm)
+		Mats.mi(Mats.capsule(0.08, 0.3), jacket, Vector3(0, -0.13, 0), arm)
+		Mats.mi(Mats.cyl(0.088, 0.088, 0.065), jacket_lt, Vector3(0, -0.27, 0), arm)
+		Mats.mi(Mats.capsule(0.058, 0.2), skin, Vector3(0, -0.36, 0), arm)
+		Mats.mi(Mats.cyl(0.066, 0.066, 0.06), glove, Vector3(0, -0.44, 0), arm)
+		Mats.mi(Mats.sphere(0.074), glove, Vector3(0, -0.51, -0.005), arm, Vector3.ZERO, Vector3(0.95, 1.25, 0.85))
+		Mats.mi(Mats.capsule(0.022, 0.08), glove, Vector3(0.03, -0.5, -0.06), arm, Vector3(30, 0, 0))
+	# montre connectée (poignet gauche)
+	Mats.mi(Mats.box(Vector3(0.09, 0.055, 0.1)), black, Vector3(-0.02, -0.42, -0.04), _arm_l)
+	wrist_screen = Mats.mi(Mats.box(Vector3(0.012, 0.04, 0.075)), Mats.emissive(Color(0.25, 0.95, 1.0), 3.0), Vector3(-0.068, -0.42, -0.04), _arm_l)
+
+	# ---------------- cou + tête
+	Mats.mi(Mats.cyl(0.06, 0.065, 0.1), skin, Vector3(0, 1.17, 0), visual)
+	head = Node3D.new()
+	head.position = Vector3(0, 1.22, 0)
+	visual.add_child(head)
+	Mats.mi(Mats.sphere(0.3, -1.0, 32), skin, Vector3(0, 0.25, 0), head, Vector3.ZERO, Vector3(1.0, 1.02, 0.98))
+	for sx in [-1.0, 1.0]:
+		Mats.mi(Mats.sphere(0.062), skin, Vector3(0.29 * sx, 0.25, 0.02), head, Vector3.ZERO, Vector3(0.6, 1, 0.9))
+		Mats.mi(Mats.sphere(0.066), white, Vector3(0.1 * sx, 0.31, -0.262), head, Vector3.ZERO, Vector3(1.0, 1.15, 0.55))
+		Mats.mi(Mats.sphere(0.042), iris, Vector3(0.1 * sx, 0.305, -0.292), head, Vector3.ZERO, Vector3(1, 1.1, 0.5))
+		Mats.mi(Mats.sphere(0.022), black, Vector3(0.1 * sx, 0.305, -0.31), head, Vector3.ZERO, Vector3(1, 1, 0.5))
+		Mats.mi(Mats.sphere(0.011), white, Vector3(0.1 * sx + 0.014, 0.322, -0.322), head)
+		Mats.mi(Mats.box(Vector3(0.105, 0.024, 0.03)), hair, Vector3(0.1 * sx, 0.395, -0.262), head, Vector3(0, 0, 9 * sx))
+
+	# visage découvert (montré à la fin, quand l'air est redevenu pur)
+	face_under_mask = Node3D.new()
+	head.add_child(face_under_mask)
+	Mats.mi(Mats.sphere(0.032), skin, Vector3(0, 0.235, -0.295), face_under_mask)
+	var smile := Mats.bezier(Vector3(-0.06, 0.15, -0.272), Vector3(-0.03, 0.12, -0.29), Vector3(0.03, 0.12, -0.29), Vector3(0.06, 0.15, -0.272), 10)
+	Mats.mi(Mats.tube(smile, 0.011, 6), Mats.mat(Color(0.45, 0.16, 0.14), 0.6), Vector3.ZERO, face_under_mask)
+	face_under_mask.visible = false
+
+	# masque à gaz
+	mask_root = Node3D.new()
+	head.add_child(mask_root)
+	Mats.mi(Mats.sphere(0.165), mask_m, Vector3(0, 0.15, -0.235), mask_root, Vector3.ZERO, Vector3(1.05, 0.88, 0.85))
+	Mats.mi(Mats.torus(0.12, 0.16), mask_m, Vector3(0, 0.16, -0.2), mask_root, Vector3(90, 0, 0), Vector3(1.05, 1, 0.9))
+	Mats.mi(Mats.cyl(0.072, 0.075, 0.08), mask_m, Vector3(0, 0.12, -0.37), mask_root, Vector3(90, 0, 0))
+	Mats.mi(Mats.torus(0.058, 0.08), yellow, Vector3(0, 0.12, -0.405), mask_root, Vector3(90, 0, 0))
+	Mats.mi(Mats.cyl(0.048, 0.048, 0.02), dark_metal, Vector3(0, 0.12, -0.415), mask_root, Vector3(90, 0, 0))
+	for sx in [-1.0, 1.0]:
+		Mats.mi(Mats.cyl(0.05, 0.05, 0.06), mask_m, Vector3(0.16 * sx, 0.13, -0.29), mask_root, Vector3(0, 0, 90))
+		Mats.mi(Mats.torus(0.04, 0.056), yellow, Vector3(0.19 * sx, 0.13, -0.29), mask_root, Vector3(0, 0, 90))
+	Mats.mi(Mats.torus(0.295, 0.315), strap, Vector3(0, 0.22, 0.0), mask_root, Vector3(-12, 0, 0))
+	var hose_pts := Mats.bezier(Vector3(-0.2, 1.35, -0.29), Vector3(-0.42, 1.25, -0.12),
+		Vector3(-0.32, 1.52, 0.32), Vector3(-0.05, 1.34, 0.37), 34)
+	for i in hose_pts.size():
+		hose_pts[i] = hose_pts[i] - head.position
+	Mats.mi(Mats.tube(hose_pts, 0.026, 10, true), Mats.mat(Color(0.10, 0.10, 0.11), 0.5), Vector3.ZERO, mask_root)
+
+	# cheveux en bataille : calotte + mèches orientées vers l'extérieur
+	Mats.mi(Mats.sphere(0.318, -1.0, 28), hair, Vector3(0, 0.33, 0.035), head, Vector3.ZERO, Vector3(1.0, 0.86, 1.02))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2060
+	for i in 30:
+		var theta: float = rng.randf_range(0.0, TAU)
+		var phi: float = rng.randf_range(0.05, 1.25)
+		var dir := Vector3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta))
+		if dir.z < -0.55 and dir.y < 0.75:
+			continue    # dégager le visage
+		var base: Vector3 = Vector3(0, 0.33, 0.035) + Vector3(dir.x * 0.3, dir.y * 0.26, dir.z * 0.31)
+		var out: Vector3 = (dir + Vector3(0, -0.15, 0.25) + Vector3(rng.randf_range(-0.3, 0.3), 0, rng.randf_range(-0.3, 0.3))).normalized()
+		var tuft := Mats.mi(Mats.capsule(rng.randf_range(0.045, 0.07), rng.randf_range(0.16, 0.27)), hair if i % 3 else hair_hi, base, head)
+		tuft.basis = Basis(Quaternion(Vector3.UP, out))
+	# frange tombant sur le front
+	for k in 6:
+		var x: float = -0.17 + k * 0.07
+		var t := Mats.mi(Mats.capsule(0.055, 0.22), hair if k % 2 else hair_hi, Vector3(x, 0.47, -0.2), head)
+		t.basis = Basis(Quaternion(Vector3.UP, Vector3(x * 1.4, 0.35, -1.0).normalized()))
+
+
+func _process(delta: float) -> void:
+	_breath_t += delta
+	if _torso != null:
+		var b: float = 1.0 + sin(_breath_t * 2.2) * 0.012
+		_torso.scale = Vector3(b, 1.0, b)
+	if head != null:
+		head.rotation.x = sin(_breath_t * 1.1) * 0.03 - speed_factor * 0.08
+	if wrist_screen != null:
+		var mat := wrist_screen.material_override as StandardMaterial3D
+		mat.emission_energy_multiplier = 2.5 + sin(_breath_t * 3.0) * 0.8
+	if tank_light != null:
+		tank_light.visible = fmod(_breath_t, 1.6) < 1.2
+
+
+## Fin du jeu : l'air est redevenu respirable, Yassine retire son masque.
+func remove_mask() -> void:
+	face_under_mask.visible = true
+	var tw := create_tween()
+	tw.tween_property(mask_root, "position", Vector3(0, -0.4, -0.6), 0.9).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(mask_root, "scale", Vector3(0.01, 0.01, 0.01), 0.9)
+	tw.tween_callback(func(): mask_root.visible = false)
+
+
+func set_air_warning(low: bool) -> void:
+	if tank_light != null:
+		tank_light.material_override = Mats.emissive(Color(1.0, 0.25, 0.2) if low else Color(0.3, 1.0, 0.75), 4.0)
