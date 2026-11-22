@@ -366,6 +366,12 @@ func _process(delta: float) -> void:
 		sfx.update(GameState.local_restoration / 100.0, 0.0, bp, delta)
 
 
+## « paper », « textiles », « PET bottles » (PET reste en majuscules)
+func _mat_word() -> String:
+	var m: String = String(lv.material_label)
+	return "PET bottles" if m.to_upper() == "PET" else m.to_lower()
+
+
 func _flat_dist(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
@@ -383,10 +389,13 @@ func _update_camera(delta: float) -> void:
 		Phase.SORT:
 			tp = station_pos + Vector3(0.0, 2.5, 5.6)
 			tl = station_pos + Vector3(0.0, 1.2, 0.0)
-		Phase.WORKBENCH, Phase.PUZZLE:
-			# l'établi à gauche de l'écran, le panneau d'étapes à droite
+		Phase.WORKBENCH:
 			tp = bench_pos + Vector3(1.3, 2.3, 3.6)
 			tl = bench_pos + Vector3(1.1, 0.9, 0.0)
+		Phase.PUZZLE:
+			# l'établi à gauche de l'écran, le panneau d'étapes (docké à droite) ne le cache pas
+			tp = bench_pos + Vector3(2.3, 2.7, 4.6)
+			tl = bench_pos + Vector3(2.3, 0.8, 0.0)
 		Phase.DEAD:
 			tp = bp + _dead_cam_off
 			tl = bp + Vector3(0.0, 0.35, 0.0)
@@ -769,7 +778,7 @@ func _build_workbench() -> void:
 ## les objets RÉELLEMENT ramassés sur ce rivage (GameState.inventory).
 func _start_workbench() -> void:
 	_set_phase(Phase.WORKBENCH)
-	hud.set_objective("Your recovered %s" % String(lv.material_label).to_lower())
+	hud.set_objective("Your recovered %s" % _mat_word())
 	boy.velocity = Vector3.ZERO
 	var stand := bench_pos + Vector3(2.1, 0, 0.3)
 	stand.y = world.height_at(stand.x, stand.z) + 0.05
@@ -789,8 +798,13 @@ func _start_workbench() -> void:
 		var model := ItemFactory.build(id)
 		model.scale = Vector3.ONE * 0.01
 		slot.add_child(model)
-		var tag := Mats.label3d(String(GameData.item(id).get("label", id)), 30, Color(1, 1, 1), slot, Vector3(0, -0.02, 0.5), false)
+		var name_txt: String = String(GameData.item(id).get("label", id)).replace(" (PET)", "")
+		var tag := Mats.label3d(name_txt, 24, Color(1, 1, 1), slot, Vector3(0, -0.02, 0.42 + 0.16 * float(i % 2)), false)
+		tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		tag.width = 150.0
 		tag.rotation_degrees.x = -50
+		tag.no_depth_test = true          # le nom reste lisible devant l'objet
+		tag.render_priority = 2
 		tag.outline_size = 8
 		tag.outline_modulate = Color(0, 0, 0, 0.85)
 		tag.modulate.a = 0.0
@@ -808,7 +822,7 @@ func _start_workbench() -> void:
 
 func _start_puzzle() -> void:
 	_set_phase(Phase.PUZZLE)
-	hud.set_objective("Recycle: give your %s a new life" % String(lv.material_label).to_lower())
+	hud.set_objective("Recycle: give your %s a new life" % _mat_word())
 	var inv: Array = GameState.level_inventory(level_id)
 	if inv.is_empty():
 		inv = (lv.collect as Array).duplicate()

@@ -499,7 +499,7 @@ func _ready() -> void:
 func item_labels() -> Array:
 	var out: Array = []
 	for id in items:
-		out.append(String(GameData.item(String(id)).get("label", id)))
+		out.append(String(GameData.item(String(id)).get("label", id)).replace(" (PET)", ""))
 	return out
 
 

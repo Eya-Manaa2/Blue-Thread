@@ -819,21 +819,27 @@ func _apply(force: bool) -> void:
 	sky_mat.ground_horizon_color = sky_mat.sky_horizon_color
 	sky_mat.ground_bottom_color = Color(0.2, 0.17, 0.14).lerp(Color(0.1, 0.3, 0.45), k)
 	sky_mat.sky_energy_multiplier = lerpf(0.9, 1.05, k)
-	env.fog_light_color = Color(t.fog).lerp(Color(0.72, 0.84, 0.94), k)
+	env.fog_light_color = Color(t.fog).lerp(Color(0.58, 0.72, 0.86), k)
 	env.fog_density = lerpf(0.0095, 0.0028, k)
 	env.adjustment_saturation = lerpf(0.82, 1.12, k) * (1.0 - 0.75 * desaturate)
 	env.adjustment_contrast = lerpf(1.08, 1.04, k)
 	sun.light_color = Color(t.sun).lerp(Color(1.0, 0.96, 0.88), k)
 	sun.light_energy = lerpf(1.15, 1.2, k)
-	env.tonemap_exposure = lerpf(1.0, 0.86, k)
-	env.ambient_light_energy = lerpf(0.85, 0.7, k)
+	env.tonemap_exposure = lerpf(1.0, 0.8, k)
+	if env.glow_enabled:
+		env.glow_intensity = lerpf(0.45, 0.2, k)
+	env.ambient_light_energy = lerpf(0.85, 0.6, k)
 	sun.rotation_degrees.x = lerpf(-14.0, -38.0, k)
 	sea_mat.set_shader_parameter("restoration", k)
 	sea_mat.set_shader_parameter("sky_col", sky_mat.sky_horizon_color)
 	terrain_mat.set_shader_parameter("restoration", k)
 	if matte_mat != null:
-		# fond peint toujours visible ; il s'éclaircit légèrement avec la restauration
-		matte_mat.albedo_color = Color(0.92, 0.9, 0.88, 1.0).lerp(Color(1.05, 1.05, 1.08, 1.0), k)
+		# Skhira / Sidi Mansour : fond peint (côte en partie restaurée) toujours visible.
+		# Gabès : fond pollué (usines fumantes) qui s'efface quand l'histoire atteint 100 %.
+		var a: float = 1.0
+		if level_id == "gabes":
+			a = 1.0 - 0.9 * smoothstep(0.55, 1.0, r)
+		matte_mat.albedo_color = Color(0.92, 0.9, 0.88, a).lerp(Color(1.0, 1.0, 1.04, a), k)
 	for s in _smokes:
 		var p: CPUParticles3D = s[0]
 		p.emitting = r < float(s[1])
