@@ -2,8 +2,9 @@ extends Node3D
 ## Mima — grand-mère tunisienne, refaite pour la fin (même style « film
 ## d'animation » arrondi que le petit-fils, mêmes proportions).
 ##  - Visage : yeux expressifs (blanc, iris brun, pupille, reflet, paupières
-##    qui clignent), sourcils gris, nez, joues, rides douces (front, pattes
-##    d'oie, sillons), bouche neutre / sourire.
+##    qui clignent), sourcils gris, nez fin, joues rosées à fleur de peau
+##    (plus de joues en boules), rides douces (front, pattes d'oie),
+##    bouche neutre / sourire.
 ##  - Foulard crème à bordure brodée bleue et rouge, mèches grises,
 ##    châle (sefsari) sur les épaules, longue robe bordeaux brodée, mains.
 ##  - Animations procédurales : respiration, clignements, tête qui suit une
@@ -34,7 +35,6 @@ var _wonder_target: float = 0.0
 func _ready() -> void:
 	var skin_c := Color(0.80, 0.60, 0.47)
 	var skin := Mats.mat(skin_c, 0.55, 0.0, 0.2)
-	var skin_dk := Mats.mat(skin_c.darkened(0.18), 0.6)
 	var wrinkle := Mats.mat(skin_c.darkened(0.30), 0.7)
 	var dress := Mats.mat(Color(0.46, 0.13, 0.18), 0.9, 0.0, 0.15)
 	var dress_dk := Mats.mat(Color(0.34, 0.09, 0.13), 0.9)
@@ -79,28 +79,33 @@ func _ready() -> void:
 
 	# --- tête
 	head = Node3D.new()
-	head.position = Vector3(0, 0.50, -0.01)
+	head.position = Vector3(0, 0.52, -0.01)
+	# (22/11) tête agrandie : même style « gros visage expressif » que le
+	# petit-fils (son visage paraissait minuscule dans le foulard)
+	head.scale = Vector3.ONE * 1.6
 	_torso.add_child(head)
 	Mats.mi(Mats.cyl(0.055, 0.065, 0.12, 12), skin, Vector3(0, -0.11, 0.01), head)
 	Mats.mi(Mats.sphere(0.155, -1.0, 28), skin, Vector3(0, 0.03, 0), head, Vector3.ZERO, Vector3(0.95, 1.08, 0.98))
-	# joues et menton (visage âgé, doux)
+	# (22/11) plus de « boules » de joues ni de menton : le visage garde la
+	# forme lisse de l'ovale ; les joues sont juste rosées, à fleur de peau.
+	var blush := Mats.mat(skin_c.lerp(Color(0.86, 0.48, 0.44), 0.35), 0.6)
 	for sx in [-1.0, 1.0]:
-		Mats.mi(Mats.sphere(0.05, -1.0, 12), skin, Vector3(0.068 * sx, -0.015, -0.115), head)
-	Mats.mi(Mats.sphere(0.045, -1.0, 12), skin, Vector3(0, -0.105, -0.11), head, Vector3.ZERO, Vector3(1.1, 0.8, 0.9))
-	# nez
-	Mats.mi(Mats.capsule(0.022, 0.07), skin, Vector3(0, 0.02, -0.152), head, Vector3(18, 0, 0))
-	Mats.mi(Mats.sphere(0.026, -1.0, 12), skin, Vector3(0, -0.012, -0.165), head)
-	for sx in [-1.0, 1.0]:
-		Mats.mi(Mats.sphere(0.013, -1.0, 8), skin_dk, Vector3(0.017 * sx, -0.02, -0.158), head)
+		var ck := Mats.mi(Mats.sphere(0.03, -1.0, 16), blush, Vector3(0.074 * sx, -0.018, -0.127), head, Vector3.ZERO, Vector3(1.0, 0.75, 0.22))
+		ck.rotation = Vector3(0.1, 0.5 * sx, 0)
+	# mâchoire douce (intérieure : arrondit le bas du visage sans bosse)
+	Mats.mi(Mats.sphere(0.12, -1.0, 24), skin, Vector3(0, -0.03, -0.02), head, Vector3.ZERO, Vector3(0.95, 0.85, 0.95))
+	# nez fin, petit bout arrondi
+	Mats.mi(Mats.capsule(0.017, 0.062), skin, Vector3(0, 0.018, -0.149), head, Vector3(16, 0, 0))
+	Mats.mi(Mats.sphere(0.019, -1.0, 14), skin, Vector3(0, -0.008, -0.156), head, Vector3.ZERO, Vector3(1.15, 0.9, 0.9))
 	# yeux expressifs
 	for sx in [-1.0, 1.0]:
 		var eye := Node3D.new()
 		eye.position = Vector3(0.056 * sx, 0.045, -0.128)
 		head.add_child(eye)
-		Mats.mi(Mats.sphere(0.024, -1.0, 16), Mats.mat(Color(0.97, 0.95, 0.92), 0.3), Vector3.ZERO, eye, Vector3.ZERO, Vector3(1.25, 1.0, 0.7))
-		Mats.mi(Mats.sphere(0.0135, -1.0, 14), Mats.mat(Color(0.36, 0.22, 0.12), 0.3), Vector3(0, 0, -0.013), eye, Vector3.ZERO, Vector3(1, 1, 0.5))
-		Mats.mi(Mats.sphere(0.0065, -1.0, 10), Mats.mat(Color(0.03, 0.02, 0.02), 0.2), Vector3(0, 0, -0.019), eye)
-		Mats.mi(Mats.sphere(0.003, -1.0, 6), Mats.emissive(Color(1, 1, 1), 1.5), Vector3(0.004, 0.005, -0.022), eye)
+		Mats.mi(Mats.sphere(0.025, -1.0, 16), Mats.mat(Color(0.97, 0.95, 0.92), 0.3), Vector3.ZERO, eye, Vector3.ZERO, Vector3(1.2, 1.0, 0.62))
+		Mats.mi(Mats.sphere(0.0145, -1.0, 14), Mats.mat(Color(0.40, 0.25, 0.13), 0.3), Vector3(0, -0.001, -0.0125), eye, Vector3.ZERO, Vector3(1, 1, 0.45))
+		Mats.mi(Mats.sphere(0.007, -1.0, 10), Mats.mat(Color(0.03, 0.02, 0.02), 0.2), Vector3(0, -0.001, -0.0175), eye, Vector3.ZERO, Vector3(1, 1, 0.5))
+		Mats.mi(Mats.sphere(0.0032, -1.0, 6), Mats.emissive(Color(1, 1, 1), 1.5), Vector3(0.0045, 0.005, -0.0205), eye)
 		# paupière supérieure (cligne) + paupière inférieure un peu lourde
 		var lid := Node3D.new()
 		lid.position = Vector3(0, 0.022, 0)
@@ -119,10 +124,7 @@ func _ready() -> void:
 		# pattes d'oie
 		for k in 3:
 			var cp := Mats.bezier(Vector3(0, 0, 0), Vector3(0.008 * sx, 0.002, 0.004), Vector3(0.016 * sx, 0.001, 0.008), Vector3(0.024 * sx, -0.004 + k * 0.006 - 0.004, 0.012), 5)
-			Mats.mi(Mats.tube(cp, 0.0016, 4), wrinkle, Vector3(0.086 * sx, 0.04 + (k - 1) * 0.008, -0.105), head)
-		# sillons nez-bouche
-		var nl := Mats.bezier(Vector3(0.026 * sx, -0.02, -0.148), Vector3(0.04 * sx, -0.045, -0.142), Vector3(0.045 * sx, -0.065, -0.135), Vector3(0.04 * sx, -0.085, -0.128), 8)
-		Mats.mi(Mats.tube(nl, 0.0022, 4), wrinkle, Vector3.ZERO, head)
+			Mats.mi(Mats.tube(cp, 0.0012, 4), wrinkle, Vector3(0.088 * sx, 0.04 + (k - 1) * 0.008, -0.104), head)
 	# rides du front
 	for k in 2:
 		var fp := Mats.bezier(Vector3(-0.05, 0.11 + k * 0.016, -0.133 + k * 0.004), Vector3(-0.02, 0.116 + k * 0.016, -0.14), Vector3(0.02, 0.116 + k * 0.016, -0.14), Vector3(0.05, 0.11 + k * 0.016, -0.133 + k * 0.004), 10)
@@ -135,8 +137,8 @@ func _ready() -> void:
 	Mats.mi(Mats.tube(mn, 0.0045, 5), lip, Vector3.ZERO, _mouth_neutral)
 	_mouth_smile = Node3D.new()
 	head.add_child(_mouth_smile)
-	var ms := Mats.bezier(Vector3(-0.036, -0.052, -0.138), Vector3(-0.016, -0.074, -0.15), Vector3(0.016, -0.074, -0.15), Vector3(0.036, -0.052, -0.138), 12)
-	Mats.mi(Mats.tube(ms, 0.0055, 5), lip, Vector3.ZERO, _mouth_smile)
+	var ms := Mats.bezier(Vector3(-0.034, -0.054, -0.139), Vector3(-0.015, -0.072, -0.149), Vector3(0.015, -0.072, -0.149), Vector3(0.034, -0.054, -0.139), 12)
+	Mats.mi(Mats.tube(ms, 0.005, 6), lip, Vector3.ZERO, _mouth_smile)
 	_mouth_smile.visible = false
 
 	# --- foulard noué (laisse tout le visage dégagé) : il couvre le haut et

@@ -27,3 +27,12 @@ Légende : OK = vu fonctionner dans Godot 4.7.2 sur le PC ; À TESTER = écrit m
 | Coupure réseau sur téléphone (CONNECTION LOST) | À TESTER sur téléphone |
 | Export web + itch.io | voir rapport de livraison |
 | Preuve 5G | NON FAIT (rien n'est simulé) |
+
+## 22/11 — voix off / son / performance (vérifié dans l'éditeur Godot sur le PC de l'équipe)
+- [x] Intro : 8 plans, sous-titres, indication « VOICE-OVER · press V to mute » (voix Windows détectée), rythme réglé sur la lecture des phrases, Échap -> profil.
+- [x] Aperçus des 6 avatars corrects après la fusion des maillages.
+- [x] Gabès : compteur démo 470 appels de dessin au départ, ~290 sur la plage, 140+ FPS ; marche, ramassage, pénalité objet inutile OK.
+- [x] Aperçu de restauration Skhira et Sidi Mansour à 100 % : grues, épave, barques, oliviers OK.
+- [x] Fin (F3 en démo) : Mima avec la nouvelle tête, dialogues OK.
+- [ ] À écouter par l'équipe : la voix off et la nouvelle ambiance (je ne peux pas entendre le son à distance).
+- [ ] À tester : version web sur un portable du jury (Chrome/Edge), et sur téléphone.

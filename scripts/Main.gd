@@ -36,6 +36,7 @@ var _card_layer: CanvasLayer
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.02, 0.03, 0.05))
+	Voice.available()   # prépare la liste des voix (chargée en différé sur navigateur)
 	sfx = SfxScript.new()
 	sfx.world = self
 	add_child(sfx)
@@ -340,6 +341,24 @@ func _find_with_method(n: Node, method: String) -> Object:
 		if f != null:
 			return f
 	return null
+
+
+## V : couper / remettre la voix off (synthèse vocale de l'appareil)
+func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_V:
+		var on: bool = Voice.toggle()
+		_voice_toast("VOICE-OVER ON" if on else "VOICE-OVER OFF  (press V to turn it back on)")
+
+
+func _voice_toast(text: String) -> void:
+	var l := UiKit.label(text, 18, Color(0.75, 0.92, 1.0), "bold", 5)
+	UiKit.place(l, Vector2(0.5, 0), Vector2(0, 90), 0, 0)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_card_layer.add_child(l)
+	var tw := l.create_tween()
+	tw.tween_interval(1.6)
+	tw.tween_property(l, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(l.queue_free)
 
 
 func _process(delta: float) -> void:

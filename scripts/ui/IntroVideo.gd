@@ -27,11 +27,19 @@ var _t: float = 0.0
 var _shown: Dictionary = {}       # répliques déjà affichées dans le plan courant
 var _video: VideoStreamPlayer
 var _done: bool = false
+var _line_i: int = 0              # prochaine réplique du plan
+var _gap: float = 0.0             # petite pause après chaque phrase lue
+var _voice: bool = false          # voix off disponible sur cet appareil
+var _voice_poll: float = 0.0
+var _voice_hint: Label
 
 
 func _ready() -> void:
 	theme = UiKit.theme()
 	UiKit.full_rect(self)
+	_voice = Voice.available()
+	if sfx != null and sfx.has_method("set_music"):
+		sfx.set_music(false)
 	var black := UiKit.full_rect(ColorRect.new()) as ColorRect
 	black.color = Color(0, 0, 0)
 	add_child(black)
@@ -102,6 +110,10 @@ func _ready() -> void:
 	UiKit.place(skip, Vector2(1, 1), Vector2(-24, -24), -1, -1)
 	skip.pressed.connect(_finish)
 	add_child(skip)
+	_voice_hint = UiKit.label("VOICE-OVER  ·  press V to mute", 14, Color(0.7, 0.85, 0.95, 0.75), "bold", 4)
+	UiKit.place(_voice_hint, Vector2(0, 1), Vector2(24, -30), 1, -1)
+	_voice_hint.visible = _voice
+	add_child(_voice_hint)
 
 
 func _next() -> void:
@@ -111,6 +123,9 @@ func _next() -> void:
 		return
 	_t = 0.0
 	_shown.clear()
+	_line_i = 0
+	_gap = 0.0
+	Voice.stop()
 	var sd: Dictionary = _scenes[_i]
 	var is_title: bool = bool(sd.get("title", false))
 	var front: TextureRect = _layers[_i % 2]
@@ -139,6 +154,7 @@ func _next() -> void:
 func _show_line(who: String, text: String) -> void:
 	if who == "TITLE":
 		_title.text = text
+		Voice.say("NARRATOR", text)
 		var tt := create_tween()
 		tt.tween_property(_title, "modulate:a", 1.0, 1.0)
 		return
@@ -152,6 +168,7 @@ func _show_line(who: String, text: String) -> void:
 	UiKit.set_label_color(_speaker, UiKit.TEAL if who == "MIMA" else Color(1.0, 0.82, 0.45))
 	_line.text = ("“%s”" % text) if who != "NARRATOR" else text
 	_line.visible_ratio = 0.0
+	Voice.say(who, text)
 	_sub_box.modulate.a = 0.0
 	var tw := create_tween()
 	tw.tween_property(_sub_box, "modulate:a", 1.0, 0.3)
@@ -162,14 +179,34 @@ func _process(delta: float) -> void:
 	if _done or _video != null or _i < 0 or _i >= _scenes.size():
 		return
 	_t += delta
+	# les voix du navigateur se chargent parfois après le démarrage
+	if not _voice and Voice.enabled:
+		_voice_poll -= delta
+		if _voice_poll <= 0.0:
+			_voice_poll = 0.5
+			_voice = Voice.available()
+	if _voice_hint != null:
+		_voice_hint.visible = _voice and Voice.enabled
 	var sd: Dictionary = _scenes[_i]
 	var lines: Array = sd.get("lines", [])
-	for k in lines.size():
-		var ln: Array = lines[k]
-		if not _shown.has(k) and _t >= float(ln[2]):
-			_shown[k] = true
+	# Avec la voix off : chaque phrase attend que la précédente soit lue,
+	# et le plan attend la fin de la dernière phrase (+ courte pause).
+	var talking: bool = _voice and Voice.enabled and Voice.speaking()
+	if talking:
+		_gap = 0.45
+	else:
+		_gap = maxf(0.0, _gap - delta)
+	if _line_i < lines.size():
+		var ln: Array = lines[_line_i]
+		if _t >= float(ln[2]) and not talking and _gap <= 0.0:
+			_line_i += 1
 			_show_line(String(ln[0]), String(ln[1]))
-	if _t >= float(sd.get("dur", 6.0)):
+			# temps de lecture minimum de la phrase (avec ou sans voix)
+			_gap = clampf(String(ln[1]).length() * 0.055, 1.8, 4.5) if not _voice else 0.8
+			return
+	var min_dur: float = float(sd.get("dur", 6.0))
+	var waiting: bool = _line_i < lines.size() or talking or _gap > 0.0
+	if _t >= min_dur and (not waiting or _t > min_dur + 14.0):
 		_next()
 	if sfx != null:
 		sfx.update(0.0, 0.2, Vector3.ZERO, delta)
@@ -179,6 +216,9 @@ func _finish() -> void:
 	if _done:
 		return
 	_done = true
+	Voice.stop()
+	if sfx != null and sfx.has_method("set_music"):
+		sfx.set_music(true)
 	if _video != null:
 		_video.stop()
 	var tw := create_tween()

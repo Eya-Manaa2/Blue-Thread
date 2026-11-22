@@ -219,6 +219,7 @@ func _spawn_pickup(id: String, p: Vector3, bad: bool, i: int) -> void:
 	spin.position = Vector3(0, 0.7, 0)
 	root.add_child(spin)
 	var model := ItemFactory.build(id)
+	Mats.merge(model)      # objet en un seul bloc par matériau (plus léger)
 	model.scale = Vector3.ONE * 1.6
 	spin.add_child(model)
 	var beam := MeshInstance3D.new()
@@ -264,6 +265,7 @@ func _spawn_refills() -> void:
 			Mats.mi(Mats.cyl(0.16, 0.16, 0.9, 16), metal, Vector3.ZERO, tank)
 			Mats.mi(Mats.sphere(0.16), metal, Vector3(0, 0.45, 0), tank, Vector3.ZERO, Vector3(1, 0.6, 1))
 			Mats.mi(Mats.cyl(0.165, 0.165, 0.12, 16), Mats.mat(Color(0.15, 0.5, 0.95), 0.5), Vector3(0, 0.1, 0), tank)
+			Mats.merge(tank)
 		var ring := Mats.mi(Mats.torus(0.85, 0.95, 32), Mats.emissive(Color(0.3, 0.8, 1.0), 3.0), Vector3(0, 0.05, 0), root)
 		var light := OmniLight3D.new()
 		light.light_color = Color(0.35, 0.8, 1.0)
@@ -277,8 +279,59 @@ func _spawn_refills() -> void:
 
 
 # ================================================================ boucle
+## Mode démo (J au menu) : compteur de performance discret en haut à gauche
+var _perf_lbl: Label = null
+var _perf_t: float = 0.0
+
+
+func _perf_overlay(delta: float) -> void:
+	if not GameState.demo_mode:
+		return
+	if _perf_lbl == null:
+		var cl := CanvasLayer.new()
+		cl.layer = 50
+		add_child(cl)
+		_perf_lbl = UiKit.label("", 13, Color(0.7, 1.0, 0.8), "bold", 4)
+		_perf_lbl.position = Vector2(12, 6)
+		_perf_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cl.add_child(_perf_lbl)
+		_perf_dump.call_deferred()
+	_perf_t -= delta
+	if _perf_t > 0.0:
+		return
+	_perf_t = 0.5
+	_perf_lbl.text = "FPS %d  ·  draw calls %d  ·  objects %d" % [Engine.get_frames_per_second(),
+		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+		Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)]
+
+
+## (démo) nombre de maillages par grand groupe de la scène, dans la console
+func _perf_dump() -> void:
+	var counts: Dictionary = {}
+	var stack: Array = [[self, "ctrl"]]
+	while not stack.is_empty():
+		var it: Array = stack.pop_back()
+		var n: Node = it[0]
+		for c in n.get_children():
+			var key: String = it[1]
+			if n == self or n == world:
+				var sc: Script = c.get_script()
+				var nm: String = String(c.name)
+				if nm.begins_with("@"):
+					nm = "anon"
+				key = ("world/" if n == world else "") + c.get_class() + ":" + (sc.resource_path.get_file() if sc != null else nm)
+			if c is MeshInstance3D or c is MultiMeshInstance3D or c is Label3D or c is GPUParticles3D or c is CPUParticles3D:
+				counts[key] = int(counts.get(key, 0)) + 1
+			stack.append([c, key])
+	var keys: Array = counts.keys()
+	keys.sort_custom(func(a, b): return counts[a] > counts[b])
+	for k in keys.slice(0, 18):
+		print("[perf] ", counts[k], "  ", k)
+
+
 func _process(delta: float) -> void:
 	_t += delta
+	_perf_overlay(delta)
 	var bp: Vector3 = boy.global_position
 	# limites du rivage
 	if phase == Phase.COLLECT or phase == Phase.TO_STATION:
@@ -437,10 +490,16 @@ func _update_camera(delta: float) -> void:
 		_:
 			tp = bp + Vector3(0, 3.2, 7.4)
 			tl = bp + Vector3(0, 1.1, -4.0)
-	var k: float = 1.0 - exp(-3.5 * delta)
+	# En jeu : caméra qui suit vite (sensation de réactivité, pas de « traîne ») ;
+	# plans de cinématique : mouvements lents et doux comme avant.
+	var playing: bool = phase == Phase.COLLECT or phase == Phase.TO_STATION
+	var k: float = 1.0 - exp(-(9.0 if playing else 3.5) * delta)
 	_cam_pos = _cam_pos.lerp(tp, k)
 	_cam_look = _cam_look.lerp(tl, k)
-	cam.global_position = cam.global_position.lerp(_cam_pos, 1.0 - exp(-6.0 * delta))
+	if playing:
+		cam.global_position = _cam_pos
+	else:
+		cam.global_position = cam.global_position.lerp(_cam_pos, 1.0 - exp(-6.0 * delta))
 	cam.look_at(_cam_look)
 
 
@@ -806,6 +865,7 @@ func _build_workbench() -> void:
 		for sz in [-0.5, 0.5]:
 			Mats.mi(Mats.box(Vector3(0.1, 0.9, 0.1)), dark, Vector3(sx, 0.45, sz), bench)
 	Mats.mi(Mats.box(Vector3(3.0, 0.06, 1.0)), dark, Vector3(0, 0.25, 0), bench)
+	Mats.merge_direct(bench)
 	var lamp := OmniLight3D.new()
 	lamp.light_color = Color(1.0, 0.86, 0.62)
 	lamp.light_energy = 1.6

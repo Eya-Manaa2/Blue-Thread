@@ -46,7 +46,12 @@ var _noise := FastNoiseLite.new()
 var _rng := RandomNumberGenerator.new()
 var _tint: Dictionary = {}
 ## Téléphone (navigateur Android / iOS) : version allégée pour garder un bon framerate.
+var _applied_r: float = -1.0
+var _applied_desat: float = 0.0
 var low_end: bool = OS.has_feature("web_android") or OS.has_feature("web_ios") or OS.has_feature("mobile")
+## Version navigateur (itch.io) : rendu allégé pour rester fluide sur un
+## portable de jury (pas de glow, ombres en une seule passe, mer moins dense).
+var web: bool = OS.has_feature("web")
 
 const TINTS := {
 	"gabes": {"sky_top": Color(0.33, 0.27, 0.24), "sky_hor": Color(0.86, 0.58, 0.34), "fog": Color(0.66, 0.48, 0.32),
@@ -164,8 +169,8 @@ func _build_terrain() -> void:
 func _build_sea() -> void:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(460, 240)
-	pm.subdivide_width = 150
-	pm.subdivide_depth = 80
+	pm.subdivide_width = 90 if (web or low_end) else 150
+	pm.subdivide_depth = 48 if (web or low_end) else 80
 	sea_mat = ShaderMaterial.new()
 	sea_mat.shader = SEA_SHADER
 	sea_mat.set_shader_parameter("phase", phase)
@@ -186,12 +191,14 @@ func _build_environment() -> void:
 	sky_mat.sun_curve = 0.08
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
+	# le ciel ne sert qu'à l'éclairage ambiant : petite carte = mises à jour bon marché
+	sky.radiance_size = Sky.RADIANCE_SIZE_64
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 0.85
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.05
-	env.glow_enabled = not low_end
+	env.glow_enabled = not (low_end or web)
 	env.glow_intensity = 0.45
 	env.glow_bloom = 0.0
 	env.glow_hdr_threshold = 1.15
@@ -203,7 +210,9 @@ func _build_environment() -> void:
 	add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = not low_end
-	sun.directional_shadow_max_distance = 55.0
+	# 4 passes d'ombre par défaut : on passe à 1 (web) ou 2 (bureau)
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if web else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = 34.0 if web else 45.0
 	# soleil bas, face à la caméra (contre-jour doré comme les images de référence)
 	sun.rotation_degrees = Vector3(-14, 145.0 if level_id == "skhira" else -145.0, 0)
 	add_child(sun)
@@ -275,14 +284,16 @@ func _smoke(pos: Vector3, scale_f: float, threshold: float, col: Color = Color(0
 	return p
 
 
-func _chimney(pos: Vector3, h: float, rad: float, threshold: float) -> void:
+func _chimney(pos: Vector3, h: float, rad: float, threshold: float, parent: Node3D = null) -> void:
+	if parent == null:
+		parent = self
 	var red := Mats.mat(Color(0.62, 0.20, 0.14), 0.85)
 	var white := Mats.mat(Color(0.82, 0.78, 0.72), 0.85)
 	var bands := 6
 	for i in bands:
 		var bh: float = h / bands
 		var rr: float = rad * (1.0 - 0.18 * float(i) / bands)
-		Mats.mi(Mats.cyl(rr * 0.97, rr, bh, 16), red if i % 2 == 0 else white, pos + Vector3(0, bh * (i + 0.5), 0), self)
+		Mats.mi(Mats.cyl(rr * 0.97, rr, bh, 16), red if i % 2 == 0 else white, pos + Vector3(0, bh * (i + 0.5), 0), parent)
 	_smoke(pos + Vector3(0, h + 1.0, 0), rad * 1.2, threshold)
 
 
@@ -291,23 +302,27 @@ func _build_far_industry() -> void:
 	var steel := Mats.mat(Color(0.40, 0.38, 0.36), 0.7, 0.5)
 	var side: float = -1.0 if level_id != "skhira" else 1.0
 	var base := Vector3(-58.0 * side, 0, -46.0)
+	var ind := Node3D.new()
+	ind.name = "FarIndustry"
+	add_child(ind)
 	# jetée + complexe chimique
-	Mats.mi(Mats.box(Vector3(46, 2.2, 22)), Mats.mat(Color(0.36, 0.32, 0.28), 0.95), base + Vector3(0, 0.6, 0), self)
-	_chimney(base + Vector3(-8, 1.7, -4), 26.0, 1.3, 0.55)
-	_chimney(base + Vector3(-3, 1.7, -6), 22.0, 1.1, 0.75)
-	_chimney(base + Vector3(10, 1.7, 2), 18.0, 1.0, 0.9)
+	Mats.mi(Mats.box(Vector3(46, 2.2, 22)), Mats.mat(Color(0.36, 0.32, 0.28), 0.95), base + Vector3(0, 0.6, 0), ind)
+	_chimney(base + Vector3(-8, 1.7, -4), 26.0, 1.3, 0.55, ind)
+	_chimney(base + Vector3(-3, 1.7, -6), 22.0, 1.1, 0.75, ind)
+	_chimney(base + Vector3(10, 1.7, 2), 18.0, 1.0, 0.9, ind)
 	for k in 5:
 		var tp := base + Vector3(-14 + k * 6.5, 1.7, 4 + (k % 2) * 3)
 		var th: float = 7.0 + (k * 3 % 5)
-		Mats.mi(Mats.cyl(1.4, 1.5, th, 14), rust if k % 2 else steel, tp + Vector3(0, th * 0.5, 0), self)
-		Mats.mi(Mats.sphere(1.5, 1.4), steel, tp + Vector3(0, th, 0), self)
-		Mats.mi(Mats.cyl(0.25, 0.25, th + 3, 8), rust, tp + Vector3(1.6, (th + 3) * 0.5, 0), self)
-	Mats.mi(Mats.box(Vector3(30, 0.5, 0.5)), rust, base + Vector3(0, 8.5, 6), self)
-	Mats.mi(Mats.box(Vector3(30, 0.5, 0.5)), rust, base + Vector3(0, 5.5, 8), self)
+		Mats.mi(Mats.cyl(1.4, 1.5, th, 14), rust if k % 2 else steel, tp + Vector3(0, th * 0.5, 0), ind)
+		Mats.mi(Mats.sphere(1.5, 1.4), steel, tp + Vector3(0, th, 0), ind)
+		Mats.mi(Mats.cyl(0.25, 0.25, th + 3, 8), rust, tp + Vector3(1.6, (th + 3) * 0.5, 0), ind)
+	Mats.mi(Mats.box(Vector3(30, 0.5, 0.5)), rust, base + Vector3(0, 8.5, 6), ind)
+	Mats.mi(Mats.box(Vector3(30, 0.5, 0.5)), rust, base + Vector3(0, 5.5, 8), ind)
 	# promontoire opposé (collines) pour fermer la baie
 	var hill := Mats.mat(Color(0.48, 0.40, 0.32), 0.95)
 	for k in 6:
-		Mats.mi(Mats.rock(1.0, 400 + k, 0.45), hill, Vector3(60.0 * side + k * 9.0 * side, -1.0, -70.0 - k * 6.0), self, Vector3(0, k * 40, 0), Vector3(14, 9 + k, 12))
+		Mats.mi(Mats.rock(1.0, 400 + k, 0.45), hill, Vector3(60.0 * side + k * 9.0 * side, -1.0, -70.0 - k * 6.0), ind, Vector3(0, k * 40, 0), Vector3(14, 9 + k, 12))
+	Mats.merge(ind)
 
 
 func _build_dust() -> void:
@@ -346,6 +361,7 @@ func _barrel(x: float, z: float, tipped: bool) -> void:
 	Mats.mi(Mats.cyl(0.42, 0.42, 1.2, 18), rust, Vector3(0, 0.6, 0), n)
 	for y in [0.15, 0.6, 1.05]:
 		Mats.mi(Mats.cyl(0.435, 0.435, 0.06, 18), rust2, Vector3(0, y, 0), n)
+	Mats.merge(n)
 	if tipped:
 		n.rotation_degrees = Vector3(90, _rng.randf_range(0, 360), 0)
 		_place(n, x, z, 0.4)
@@ -398,6 +414,7 @@ func _physical_barrel(x: float, z: float, tipped: bool) -> void:
 	Mats.mi(Mats.cyl(0.42, 0.42, 1.2, 18), rust, Vector3(0, 0.6, 0), vis)
 	for y in [0.15, 0.6, 1.05]:
 		Mats.mi(Mats.cyl(0.435, 0.435, 0.06, 18), rust2, Vector3(0, y, 0), vis)
+	Mats.merge(vis)
 	var col := CollisionShape3D.new()
 	var cs := CylinderShape3D.new()
 	cs.radius = 0.44
@@ -429,6 +446,7 @@ func _net(x: float, z: float) -> void:
 	for k in 5:
 		Mats.mi(Mats.sphere(0.6), m, Vector3(k * 0.45 - 0.9, 0.05, sin(k * 1.3) * 0.4), n, Vector3.ZERO, Vector3(1.2, 0.18, 0.9))
 	Mats.mi(Mats.sphere(0.12), Mats.mat(Color(0.95, 0.55, 0.15), 0.5), Vector3(0.9, 0.15, 0.3), n)
+	Mats.merge(n, false)
 	n.rotation_degrees.y = _rng.randf_range(0, 360)
 	_place(n, x, z, 0.0)
 
@@ -450,6 +468,7 @@ func _dead_tree(x: float, z: float, threshold: float) -> void:
 		var bl := _rng.randf_range(0.9, 1.6)
 		Mats.mi(Mats.cyl(0.02, 0.06, bl, 6), m, Vector3(0, bl * 0.5, 0), br)
 		n.add_child(br)
+	Mats.merge(n)
 	_place(n, x, z, -0.1)
 	_dead_trees.append([n, threshold])
 
@@ -479,6 +498,7 @@ func _palm(x: float, z: float, threshold: float) -> void:
 		for s in 4:
 			Mats.mi(Mats.box(Vector3(0.55 - s * 0.1, 0.03, 0.75)), frond_m, Vector3(0, -s * s * 0.06, -0.35 - s * 0.68), arc, Vector3(-s * 10, 0, 0))
 	Mats.mi(Mats.sphere(0.28), Mats.mat(Color(0.55, 0.32, 0.12), 0.7), Vector3(0, -0.15, 0), crown)
+	Mats.merge(n)
 	_place(n, x, z, -0.1)
 	n.scale = Vector3.ONE * 0.01
 	_green.append([n, threshold, _rng.randf_range(0.85, 1.15)])
@@ -493,6 +513,7 @@ func _olive(x: float, z: float, threshold: float) -> void:
 		var a := k * 1.05
 		Mats.mi(Mats.sphere(0.85), leaf_m, Vector3(cos(a) * 0.8, 2.0 + (k % 3) * 0.35, sin(a) * 0.8), n, Vector3.ZERO, Vector3(1, 0.7, 1))
 	Mats.mi(Mats.sphere(1.0), leaf_m, Vector3(0, 2.5, 0), n, Vector3.ZERO, Vector3(1, 0.7, 1))
+	Mats.merge(n)
 	_place(n, x, z, -0.1)
 	n.scale = Vector3.ONE * 0.01
 	_green.append([n, threshold, _rng.randf_range(0.85, 1.2)])
@@ -509,6 +530,7 @@ func _shrub(x: float, z: float, threshold: float) -> void:
 		var rr: float = _rng.randf_range(0.28, 0.48)
 		Mats.mi(Mats.sphere(rr, -1.0, 12), m, Vector3(cos(a) * 0.32, rr * 0.8, sin(a) * 0.32), n, Vector3.ZERO, Vector3(1, 0.85, 1))
 	Mats.mi(Mats.sphere(0.42, -1.0, 12), m, Vector3(0, 0.55, 0), n)
+	Mats.merge(n)
 	_place(n, x, z, -0.05)
 	n.scale = Vector3.ONE * 0.01
 	_green.append([n, threshold, _rng.randf_range(0.8, 1.3)])
@@ -525,6 +547,7 @@ func _flowers(x: float, z: float, threshold: float) -> void:
 		var h: float = _rng.randf_range(0.22, 0.4)
 		Mats.mi(Mats.cyl(0.012, 0.016, h, 5), stem, off + Vector3(0, h * 0.5, 0), n)
 		Mats.mi(Mats.sphere(0.055, -1.0, 8), head, off + Vector3(0, h + 0.02, 0), n, Vector3.ZERO, Vector3(1, 0.55, 1))
+	Mats.merge(n, false)
 	_place(n, x, z, -0.02)
 	n.scale = Vector3.ONE * 0.01
 	_green.append([n, threshold, _rng.randf_range(0.9, 1.4)])
@@ -639,6 +662,7 @@ func _build_skhira() -> void:
 		Mats.mi(Mats.box(Vector3(3.4, 1.2, 3.4)), yel, Vector3(0, 12.4, 0), cr)
 		Mats.mi(Mats.box(Vector3(0.6, 0.6, 16)), yel, Vector3(0, 13.2, -6), cr)
 		Mats.mi(Mats.cyl(0.03, 0.03, 8, 4), Mats.mat(Color(0.1, 0.1, 0.1), 0.5), Vector3(0, 9.0, -11), cr)
+		Mats.merge(cr)
 	# conteneurs colorés
 	var cols := [Color(0.70, 0.18, 0.14), Color(0.12, 0.38, 0.62), Color(0.80, 0.55, 0.12), Color(0.20, 0.50, 0.35)]
 	for k in 7:
@@ -655,6 +679,7 @@ func _build_skhira() -> void:
 	Mats.mi(Mats.tapered_box(Vector2(2.0, 7.0), Vector2(3.0, 9.0), 3.4), rust, Vector3.ZERO, wreck)
 	Mats.mi(Mats.box(Vector3(4, 2.5, 4)), Mats.mat(Color(0.5, 0.45, 0.4), 0.9, 0.3), Vector3(0, 4.4, 3), wreck)
 	Mats.mi(Mats.cyl(0.5, 0.6, 4, 12), rust, Vector3(0, 6.5, 3), wreck)
+	Mats.merge(wreck)
 	for i in 6:
 		var x := 8.0 + i * 5.0
 		_palm(x, shore_z(x) + _rng.randf_range(18.0, 26.0), 0.25 + i * 0.07)
@@ -669,6 +694,7 @@ func _build_sidi_mansour() -> void:
 		Mats.mi(Mats.tapered_box(Vector2(0.5, 2.0), Vector2(0.95, 2.6), 0.9), Mats.mat(hull_col, 0.7), Vector3.ZERO, boat)
 		Mats.mi(Mats.box(Vector3(1.95, 0.12, 5.25)), Mats.mat(Color(0.92, 0.85, 0.6), 0.8), Vector3(0, 0.9, 0), boat)
 		Mats.mi(Mats.cyl(0.05, 0.06, 3.0, 6), Mats.mat(Color(0.45, 0.35, 0.25), 0.9), Vector3(0, 2.3, -0.6), boat)
+		Mats.merge(boat)
 		boat.rotation_degrees = Vector3(0, 70 + k * 25, 10 - k * 6)
 		_place(boat, bx, shore_z(bx) + 2.5 + k, 0.1)
 	# tapis de bouteilles
@@ -824,6 +850,18 @@ func _process(delta: float) -> void:
 func _apply(force: bool) -> void:
 	if env == null:
 		return
+	# Ciel, brouillard, lumières et shaders : recalculés seulement quand la
+	# restauration a vraiment bougé (changer le ciel à chaque image recalcule
+	# son éclairage : c'était une grosse part du coût par image).
+	var heavy: bool = force or absf(r - _applied_r) > 0.002 or absf(desaturate - _applied_desat) > 0.01
+	if heavy:
+		_applied_r = r
+		_applied_desat = desaturate
+		_apply_env()
+	_apply_props(force)
+
+
+func _apply_env() -> void:
 	var t: Dictionary = _tint
 	var clean_top := Color(0.14, 0.44, 0.88)
 	var clean_hor := Color(0.62, 0.82, 0.96)
@@ -854,6 +892,11 @@ func _apply(force: bool) -> void:
 		if level_id == "gabes":
 			a = 1.0 - 0.9 * smoothstep(0.55, 1.0, r)
 		matte_mat.albedo_color = Color(0.92, 0.9, 0.88, a).lerp(Color(1.0, 1.0, 1.04, a), k)
+	if _dust_mat != null:
+		_dust_mat.albedo_color = Color(0.85, 0.7, 0.5, 0.5 * (1.0 - k))
+
+
+func _apply_props(force: bool) -> void:
 	for s in _smokes:
 		var p: CPUParticles3D = s[0]
 		p.emitting = r < float(s[1])
@@ -872,8 +915,6 @@ func _apply(force: bool) -> void:
 		if n2.visible:
 			# feuillage qui ondule doucement au vent
 			n2.rotation.z = sin(_t * 1.3 + n2.position.x * 0.7) * 0.035
-	if _dust_mat != null:
-		_dust_mat.albedo_color = Color(0.85, 0.7, 0.5, 0.5 * (1.0 - k))
 	if _grass != null and (force or absf(_grass_r - r) > 0.02):
 		_grass_r = r
 		var mm: MultiMesh = _grass.multimesh

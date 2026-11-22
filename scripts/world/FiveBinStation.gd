@@ -92,6 +92,11 @@ func _build_bin(id: String, pos: Vector3) -> void:
 	light.omni_range = 3.0
 	light.position = Vector3(0, 1.6, -0.9)
 	root.add_child(light)
+	light.visible = false
+	# pièces fixes fusionnées (moins d'appels de dessin) ; couvercle, anneau,
+	# icône et étiquette restent séparés
+	Mats.merge_direct(lid)
+	Mats.merge_direct(root, [ring, icon])
 	bins[id] = {"root": root, "lid": lid, "ring": ring, "light": light, "body_mat": body_m, "base": col}
 
 
@@ -140,5 +145,6 @@ func _process(delta: float) -> void:
 		var light: OmniLight3D = b.light
 		var target: float = (1.6 + sin(_t * 5.0) * 0.5) if k == _highlight else 0.0
 		light.light_energy = lerpf(light.light_energy, target, 1.0 - exp(-10.0 * delta))
+		light.visible = light.light_energy > 0.02
 		if k == _highlight:
 			(b.ring as Node3D).rotation.y += delta * 1.5

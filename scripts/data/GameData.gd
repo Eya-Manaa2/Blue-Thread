@@ -209,17 +209,24 @@ const FINAL_CARD := "Every small action can begin a brighter future."
 ## durée, ambiance sonore, et répliques [qui, texte, seconde d'apparition dans le plan].
 const INTRO_SCENES := [
 	{"image": "res://assets/story/story_coast.jpg", "dur": 7.0, "sound": "industrial", "lines": [
-		["NARRATOR", "In 2060, the sea had lost its blue... and the air was no longer safe.", 0.6]]},
-	{"image": "res://assets/story/story_outside.jpg", "dur": 6.0, "sound": "boy", "lines": [
-		["NARRATOR", "But one little boy still carried hope.", 0.8]]},
+		["NARRATOR", "The Gulf of Gabès, Tunisia. The year 2060.", 0.6],
+		["NARRATOR", "Factory smoke and waste have turned the sea grey. The air is no longer safe to breathe.", 3.4]]},
+	{"image": "res://assets/story/story_outside.jpg", "dur": 6.5, "sound": "boy", "lines": [
+		["NARRATOR", "Children can only go outside with an oxygen tank... and it never lasts long.", 0.6],
+		["NARRATOR", "But one little boy still carries hope.", 3.8]]},
 	{"image": "res://assets/story/story_room.jpg", "dur": 5.0, "sound": "room", "lines": [
-		["MIMA", "When I was young, the sea was blue... full of life.", 0.5]]},
-	{"image": "res://assets/story/story_hope.jpg", "dur": 3.5, "sound": "flashback", "lines": []},
+		["MIMA", "When I was young, the sea here was blue... full of fish and life.", 0.5]]},
+	{"image": "res://assets/story/story_hope.jpg", "dur": 4.0, "sound": "flashback", "lines": [
+		["MIMA", "Turquoise water, white sand... the last blue I ever saw.", 0.4]]},
 	{"image": "res://assets/story/story_room.jpg", "dur": 4.0, "sound": "room", "lines": [
 		["MIMA", "I wish I could see it again, just once.", 0.3]]},
-	{"image": "res://assets/story/story_thread.jpg", "dur": 6.0, "sound": "promise", "lines": [
-		["GRANDSON", "I promise, Mima. I'll bring the blue back.", 0.8]]},
-	{"image": "res://assets/story/story_promise.jpg", "dur": 4.5, "sound": "title", "title": true, "lines": [
+	{"image": "res://assets/story/story_thread.jpg", "dur": 5.0, "sound": "promise", "lines": [
+		["GRANDSON", "I promise, Mima. I'll bring the blue back.", 0.6]]},
+	{"image": "res://assets/story/story_promise.jpg", "dur": 9.0, "sound": "mission", "lines": [
+		["NARRATOR", "His mission: three polluted shores. Gabès, Skhira, Sidi Mansour.", 0.4],
+		["NARRATOR", "Collect the waste before your oxygen runs out. Sort it into the right bins.", 3.4],
+		["NARRATOR", "Then recycle it into something new... and the sea will slowly turn blue again.", 6.4]]},
+	{"image": "res://assets/story/story_hope.jpg", "dur": 4.5, "sound": "title", "title": true, "lines": [
 		["TITLE", "BLUE THREAD — THE LAST BLUE", 0.4]]},
 ]
 

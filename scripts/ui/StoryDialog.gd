@@ -111,6 +111,7 @@ func _show_current() -> void:
 		_portrait_boy.texture = GameState.portrait
 	_text.text = String(line[1]).replace("{name}", GameState.display_name())
 	_text.visible_ratio = 0.0
+	Voice.say(who, _text.text)
 	if _typing != null and _typing.is_valid():
 		_typing.kill()
 	_typing = create_tween()
@@ -128,6 +129,7 @@ func _advance() -> void:
 	_i += 1
 	if _i >= _lines.size():
 		active = false
+		Voice.stop()
 		var tw := create_tween()
 		tw.tween_property(_panel, "modulate:a", 0.0, 0.15)
 		tw.tween_callback(func():

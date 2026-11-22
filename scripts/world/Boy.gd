@@ -159,6 +159,17 @@ func _build_boy() -> void:
 		for sx in [-1.0, 1.0]:
 			for k in 3:
 				Mats.mi(Mats.box(Vector3(0.012, 0.035, 0.01)), Mats.mat(Color(0.05, 0.03, 0.03), 0.5), Vector3(0.1 * sx + (k - 1) * 0.03 * sx + 0.03 * sx, 0.36, -0.29), head, Vector3(0, 0, -25 * sx + k * 12 * sx))
+	_merge_parts()
+
+
+## Fusion des pièces rigides (environ 120 appels de dessin -> une trentaine) :
+## jambes, bras, torse, tête et masque bougent toujours séparément.
+func _merge_parts() -> void:
+	for n in [_leg_l, _leg_r, _arm_l, _arm_r, _torso, head, mask_root, face_under_mask, visual]:
+		if n != null:
+			Mats.merge_direct(n, [wrist_screen, tank_light])
+	if tank_light != null and tank_light.get_parent() is Node3D:
+		Mats.merge_direct(tank_light.get_parent() as Node3D, [tank_light])
 
 
 ## Coiffures des six avatars : même tête, même masque, même squelette.

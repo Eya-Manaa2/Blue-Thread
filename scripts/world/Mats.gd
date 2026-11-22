@@ -250,3 +250,81 @@ static func bezier(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, n: int) -
 		var u: float = 1.0 - t
 		out.append(p0 * u * u * u + p1 * 3.0 * u * u * t + p2 * 3.0 * u * t * t + p3 * t * t * t)
 	return out
+
+
+## Fusionne tous les MeshInstance3D d'un décor statique en UN maillage par
+## matériau (un palmier passait de 46 appels de dessin à 3). Les nœuds
+## intermédiaires sont supprimés ; `root` garde sa position/échelle et peut
+## toujours être animé (pousse, visibilité) comme un tout.
+static func merge(root: Node3D, shadows: bool = true) -> Node3D:
+	var sts: Dictionary = {}
+	var order: Array = []
+	var stack: Array = [[root, Transform3D.IDENTITY]]
+	while not stack.is_empty():
+		var it: Array = stack.pop_back()
+		var node: Node = it[0]
+		var xf: Transform3D = it[1]
+		for c in node.get_children():
+			if not (c is Node3D):
+				continue
+			var cxf: Transform3D = xf * (c as Node3D).transform
+			if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
+				var src := c as MeshInstance3D
+				for s in src.mesh.get_surface_count():
+					var m: Material = src.material_override
+					if m == null:
+						m = src.mesh.surface_get_material(s)
+					if not sts.has(m):
+						var st := SurfaceTool.new()
+						st.begin(Mesh.PRIMITIVE_TRIANGLES)
+						sts[m] = st
+						order.append(m)
+					(sts[m] as SurfaceTool).append_from(src.mesh, s, cxf)
+			stack.append([c, cxf])
+	for c in root.get_children():
+		root.remove_child(c)
+		c.free()
+	for m in order:
+		var out := MeshInstance3D.new()
+		out.mesh = (sts[m] as SurfaceTool).commit()
+		out.material_override = m
+		if not shadows:
+			out.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(out)
+	return root
+
+
+## Variante pour les personnages animés : ne fusionne que les MeshInstance3D
+## ENFANTS DIRECTS de `node` (les sous-nœuds animés restent intacts) ;
+## `keep` = maillages à laisser séparés (écran lumineux, voyant...).
+static func merge_direct(node: Node3D, keep: Array = []) -> void:
+	var sts: Dictionary = {}
+	var order: Array = []
+	var victims: Array = []
+	for c in node.get_children():
+		if not (c is MeshInstance3D) or keep.has(c):
+			continue
+		var src := c as MeshInstance3D
+		if src.mesh == null:
+			continue
+		for s in src.mesh.get_surface_count():
+			var m: Material = src.material_override
+			if m == null:
+				m = src.mesh.surface_get_material(s)
+			if not sts.has(m):
+				var st := SurfaceTool.new()
+				st.begin(Mesh.PRIMITIVE_TRIANGLES)
+				sts[m] = st
+				order.append(m)
+			(sts[m] as SurfaceTool).append_from(src.mesh, s, src.transform)
+		victims.append(src)
+	if victims.size() < 2:
+		return
+	for v in victims:
+		node.remove_child(v)
+		v.free()
+	for m in order:
+		var out := MeshInstance3D.new()
+		out.mesh = (sts[m] as SurfaceTool).commit()
+		out.material_override = m
+		node.add_child(out)
