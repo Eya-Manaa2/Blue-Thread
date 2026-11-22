@@ -209,7 +209,9 @@ func _build_environment() -> void:
 	we.environment = env
 	add_child(we)
 	sun = DirectionalLight3D.new()
-	sun.shadow_enabled = not low_end
+	# navigateur : pas d'ombres temps réel (elles doublaient le dessin de la
+	# scène) ; les personnages ont une ombre ronde à la place (Mats.blob)
+	sun.shadow_enabled = not (low_end or web)
 	# 4 passes d'ombre par défaut : on passe à 1 (web) ou 2 (bureau)
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if web else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_max_distance = 34.0 if web else 45.0
@@ -255,7 +257,7 @@ func _smoke(pos: Vector3, scale_f: float, threshold: float, col: Color = Color(0
 	m.disable_receive_shadows = true
 	q.material = m
 	p.mesh = q
-	p.amount = 10 if low_end else 22
+	p.amount = 10 if (low_end or web) else 22
 	p.lifetime = 10.0
 	p.preprocess = 10.0
 	p.direction = Vector3(0.25, 1, 0)
@@ -333,7 +335,7 @@ func _build_dust() -> void:
 	_dust_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	q.material = _dust_mat
 	_dust.mesh = q
-	_dust.amount = 35 if low_end else 90
+	_dust.amount = 35 if (low_end or web) else 90
 	_dust.lifetime = 8.0
 	_dust.preprocess = 8.0
 	_dust.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX

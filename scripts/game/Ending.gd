@@ -3,11 +3,12 @@ extends Node3D
 ## final restauré (Sidi Mansour à 100 %, histoire locale).
 ##  Plan 1 : la caméra glisse au-dessus de la côte : mer bleue, plantes, ciel clair.
 ##  Plan 2 : Mima s'avance jusqu'à la terrasse, regarde la mer — « The blue... it's back. »
-##  Plan 3 : le petit-fils (l'avatar choisi) la rejoint, le fil bleu à la main,
-##           retire son masque — « I kept my promise, Mima. »
-##  Plan 4 : gros plan : Mima le regarde, sourit, lui prend la main —
-##           « You didn't just bring back the sea... you brought back hope. »
-##  Plan 5 : la caméra passe derrière eux vers la mer (vagues, oiseaux) ;
+##  Plan 3 : le petit-fils (l'avatar choisi) la rejoint, retire son masque ;
+##           ils se tournent FACE À FACE — « I kept my promise, Mima. »
+##  Plan 4 : Mima sourit — « You didn't just bring back the sea... you brought
+##           back hope. » — puis ils se serrent dans les bras (câlin).
+##  Plan 5 : côte à côte, main dans la main, ils regardent l'océan ;
+##           la caméra passe derrière eux vers la mer (vagues, oiseaux) ;
 ##           « BLUE THREAD — THE LAST BLUE » / « Every small action can begin a brighter future. »
 ## Puis statistiques et rejouer.
 
@@ -169,43 +170,90 @@ func _shot2() -> void:
 	tw.tween_callback(func(): dialog.show_lines([GameData.ENDING[0]], _shot3))
 
 
-# ---- Plan 3 : le petit-fils la rejoint, le fil bleu à la main
+# ---- Plan 3 : le petit-fils la rejoint ; ils se tournent face à face
 func _shot3() -> void:
 	var walk := create_tween()
 	boy.velocity = Vector3.ZERO
-	walk.tween_property(boy, "global_position", _base + Vector3(0.25, 0.15, -0.8), 1.8).set_trans(Tween.TRANS_SINE)
-	walk.tween_callback(func():
-		boy.visual.rotation.y = 0.0
-		boy.remove_mask())
-	_move_cam(_base + Vector3(-1.3, 1.6, -3.7), _base + Vector3(-0.15, 1.35, -0.85), 2.4)
+	walk.tween_property(boy, "global_position", _base + Vector3(0.35, 0.15, -0.85), 1.8).set_trans(Tween.TRANS_SINE)
+	walk.tween_callback(func(): boy.remove_mask())
+	# face à face, légèrement tournés vers la caméra (trois-quarts) pour
+	# qu'on voie bien les deux visages
+	walk.tween_property(boy.visual, "rotation:y", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
+	# Mima se retourne vers lui : face à face (lui regarde vers -X, elle vers +X)
+	var turn := create_tween().set_parallel(true)
+	turn.tween_interval(1.2)
+	turn.chain().tween_property(grandma, "rotation:y", -1.0, 0.9).set_trans(Tween.TRANS_SINE)
+	grandma.wonder(false)
+	var tl := create_tween()
+	tl.tween_interval(1.4)
+	tl.tween_callback(func(): grandma.look_at_point(_head(boy) - Vector3(0, 0.15, 0)))
+	# caméra de profil : on voit les deux visages
+	var mid := _base + Vector3(-0.12, 0.0, -0.85)
+	_move_cam(mid + Vector3(0.0, 1.45, -3.3), mid + Vector3(0.0, 1.35, 0.0), 2.4)
 	var tw := create_tween()
 	tw.tween_interval(2.8)
 	tw.tween_callback(func(): dialog.show_lines([GameData.ENDING[1]], _shot4))
 
 
-# ---- Plan 4 : gros plan émotion, elle lui prend la main
+# ---- Plan 4 : elle lui répond en souriant, puis ils se serrent dans les bras
 func _shot4() -> void:
-	grandma.look_at_point(_head(boy) - Vector3(0, 0.2, 0))
-	grandma.wonder(false)
 	grandma.smile(true)
-	grandma.hold_hand(true)
-	_move_cam(_base + Vector3(1.05, 1.6, -2.45), _base + Vector3(-0.5, 1.48, -0.85), 2.2)
+	var mid := _base + Vector3(-0.12, 0.0, -0.85)
+	_move_cam(mid + Vector3(0.45, 1.45, -2.7), mid + Vector3(-0.1, 1.38, 0.0), 2.0)
 	if sfx != null and sfx.has_method("hopeful"):
 		sfx.hopeful()
 	var tw := create_tween()
-	tw.tween_interval(2.2)
-	tw.tween_callback(func(): dialog.show_lines([GameData.ENDING[2]], _shot5))
+	tw.tween_interval(1.6)
+	tw.tween_callback(func(): dialog.show_lines([GameData.ENDING[2]], _hug))
 
 
-# ---- Plan 5 : derrière eux, vers la mer bleue
+func _hug() -> void:
+	# ils se rapprochent et s'enlacent
+	var mid := _base + Vector3(-0.12, 0.0, -0.85)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(grandma, "global_position", _base + Vector3(-0.44, 0.09, -0.85), 0.8).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(boy, "global_position", _base + Vector3(0.16, 0.15, -0.85), 0.8).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(grandma, "rotation:y", -PI * 0.5, 0.8)
+	tw.tween_property(boy.visual, "rotation:y", PI * 0.5, 0.8)
+	grandma.hug(true)
+	_boy_arms(1.15, 0.45, 0.8)
+	# caméra de trois-quarts côté mer, un peu derrière Mima : on voit le
+	# visage heureux du petit-fils et le profil de Mima qui l'enlace
+	_move_cam(mid + Vector3(-1.1, 1.55, -2.2), mid + Vector3(0.1, 1.42, 0.0), 2.0)
+	if sfx != null and sfx.has_method("restore"):
+		sfx.restore()
+	var t2 := create_tween()
+	t2.tween_interval(3.2)
+	t2.tween_callback(_shot5)
+
+
+## Bras du garçon (rotation x = vers l'avant, z = vers l'intérieur)
+func _boy_arms(fwd: float, inward: float, dur: float) -> void:
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(boy._arm_l, "rotation", Vector3(fwd, 0.0, inward), dur).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(boy._arm_r, "rotation", Vector3(fwd, 0.0, -inward), dur).set_trans(Tween.TRANS_SINE)
+
+
+# ---- Plan 5 : côte à côte, main dans la main, ils regardent l'océan
 func _shot5() -> void:
+	grandma.hug(false)
+	_boy_arms(0.0, 0.0, 0.6)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(grandma, "rotation:y", 0.0, 1.0).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(boy.visual, "rotation:y", 0.0, 1.0).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(grandma, "global_position", _base + Vector3(-0.5, 0.09, -0.9), 1.0)
+	tw.tween_property(boy, "global_position", _base + Vector3(0.1, 0.15, -0.9), 1.0)
+	tw.chain().tween_callback(func():
+		grandma.hold_hand(true)
+		var ta := create_tween()
+		ta.tween_property(boy._arm_l, "rotation", Vector3(0.15, 0.0, -0.35), 0.6))
 	grandma.look_at_point(Vector3(-6, 0.5, -30))
 	_move_cam(_base + Vector3(-0.2, 2.0, 2.6), Vector3(-6, 0.6, -40), 4.0)
 	if sfx != null and sfx.has_method("finale"):
 		sfx.finale()
-	var tw := create_tween()
-	tw.tween_interval(3.6)
-	tw.tween_callback(_final_card)
+	var t2 := create_tween()
+	t2.tween_interval(4.6)
+	t2.tween_callback(_final_card)
 
 
 ## Portrait de Mima pour la boîte de dialogue (rendu une fois)

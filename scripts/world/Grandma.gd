@@ -2,9 +2,8 @@ extends Node3D
 ## Mima — grand-mère tunisienne, refaite pour la fin (même style « film
 ## d'animation » arrondi que le petit-fils, mêmes proportions).
 ##  - Visage : yeux expressifs (blanc, iris brun, pupille, reflet, paupières
-##    qui clignent), sourcils gris, nez fin, joues rosées à fleur de peau
-##    (plus de joues en boules), rides douces (front, pattes d'oie),
-##    bouche neutre / sourire.
+##    qui clignent), sourcils gris, nez fin, rides douces (front, pattes
+##    d'oie), bouche neutre / sourire. Aucun volume ajouté sur les joues.
 ##  - Foulard crème à bordure brodée bleue et rouge, mèches grises,
 ##    châle (sefsari) sur les épaules, longue robe bordeaux brodée, mains.
 ##  - Animations procédurales : respiration, clignements, tête qui suit une
@@ -26,6 +25,7 @@ var _t: float = 0.0
 var _blink_t: float = 2.0
 var _look_target: Variant = null      # Vector3 (monde) ou null
 var _hold_hand: bool = false
+var _hug: bool = false
 var _smile: float = 0.0
 var _smile_target: float = 0.0
 var _wonder: float = 0.0              # yeux un peu plus ouverts (émerveillement)
@@ -48,6 +48,7 @@ func _ready() -> void:
 	var hair := Mats.mat(Color(0.82, 0.82, 0.80), 0.8)
 	var shoe := Mats.mat(Color(0.22, 0.16, 0.12), 0.7)
 
+	Mats.blob(self, 0.34)
 	# --- robe longue (jebba) et chaussures
 	Mats.mi(Mats.cyl(0.21, 0.30, 0.92, 24), dress, Vector3(0, 0.50, 0), self)
 	Mats.mi(Mats.torus(0.285, 0.305, 32), gold, Vector3(0, 0.10, 0), self)
@@ -86,14 +87,8 @@ func _ready() -> void:
 	_torso.add_child(head)
 	Mats.mi(Mats.cyl(0.055, 0.065, 0.12, 12), skin, Vector3(0, -0.11, 0.01), head)
 	Mats.mi(Mats.sphere(0.155, -1.0, 28), skin, Vector3(0, 0.03, 0), head, Vector3.ZERO, Vector3(0.95, 1.08, 0.98))
-	# (22/11) plus de « boules » de joues ni de menton : le visage garde la
-	# forme lisse de l'ovale ; les joues sont juste rosées, à fleur de peau.
-	var blush := Mats.mat(skin_c.lerp(Color(0.86, 0.48, 0.44), 0.35), 0.6)
-	for sx in [-1.0, 1.0]:
-		var ck := Mats.mi(Mats.sphere(0.03, -1.0, 16), blush, Vector3(0.074 * sx, -0.018, -0.127), head, Vector3.ZERO, Vector3(1.0, 0.75, 0.22))
-		ck.rotation = Vector3(0.1, 0.5 * sx, 0)
-	# mâchoire douce (intérieure : arrondit le bas du visage sans bosse)
-	Mats.mi(Mats.sphere(0.12, -1.0, 24), skin, Vector3(0, -0.03, -0.02), head, Vector3.ZERO, Vector3(0.95, 0.85, 0.95))
+	# (22/11) aucun ajout sur les joues ni le menton : seulement son vieux
+	# visage (ovale lisse, rides, nez, yeux, bouche).
 	# nez fin, petit bout arrondi
 	Mats.mi(Mats.capsule(0.017, 0.062), skin, Vector3(0, 0.018, -0.149), head, Vector3(16, 0, 0))
 	Mats.mi(Mats.sphere(0.019, -1.0, 14), skin, Vector3(0, -0.008, -0.156), head, Vector3.ZERO, Vector3(1.15, 0.9, 0.9))
@@ -203,9 +198,14 @@ func wonder(on: bool = true) -> void:
 	_wonder_target = 1.0 if on else 0.0
 
 
-## Tendre la main droite vers l'enfant et la garder (fin)
+## Donner la main droite à l'enfant placé à sa droite (côte à côte, fin)
 func hold_hand(on: bool = true) -> void:
 	_hold_hand = on
+
+
+## Câlin : les deux bras entourent l'enfant placé face à elle
+func hug(on: bool = true) -> void:
+	_hug = on
 
 
 func _process(delta: float) -> void:
@@ -248,10 +248,22 @@ func _process(delta: float) -> void:
 		head.rotation.x = lerpf(head.rotation.x, pitch, 1.0 - exp(-3.0 * delta))
 	# mains : légers mouvements, ou main tendue vers l'enfant
 	if _arm_r != null:
-		var tgt_x: float = 50.0 if _hold_hand else 4.0 + sin(_t * 0.9) * 3.0
-		var tgt_fore: float = 15.0 if _hold_hand else 40.0 + sin(_t * 1.1) * 4.0
-		_arm_r.rotation_degrees.x = lerpf(_arm_r.rotation_degrees.x, tgt_x, 1.0 - exp(-2.5 * delta))
-		_arm_r.rotation_degrees.z = lerpf(_arm_r.rotation_degrees.z, 20.0 if _hold_hand else 8.0, 1.0 - exp(-2.5 * delta))
-		_fore_r.rotation_degrees.x = lerpf(_fore_r.rotation_degrees.x, tgt_fore, 1.0 - exp(-2.5 * delta))
-		_arm_l.rotation_degrees.x = 4.0 + sin(_t * 0.8 + 1.0) * 3.0
-		_fore_l.rotation_degrees.x = 42.0 + sin(_t * 1.0 + 0.5) * 4.0
+		var k: float = 1.0 - exp(-3.0 * delta)
+		var rx: float = 4.0 + sin(_t * 0.9) * 3.0
+		var rz: float = 8.0
+		var rf: float = 40.0 + sin(_t * 1.1) * 4.0
+		var lx: float = 4.0 + sin(_t * 0.8 + 1.0) * 3.0
+		var lz: float = -8.0
+		var lf: float = 42.0 + sin(_t * 1.0 + 0.5) * 4.0
+		if _hug:
+			# bras levés vers l'avant puis refermés autour de l'enfant
+			rx = 68.0; rz = -32.0; rf = 55.0
+			lx = 68.0; lz = 32.0; lf = 55.0
+		elif _hold_hand:
+			rx = 14.0; rz = 24.0; rf = 12.0
+		_arm_r.rotation_degrees.x = lerpf(_arm_r.rotation_degrees.x, rx, k)
+		_arm_r.rotation_degrees.z = lerpf(_arm_r.rotation_degrees.z, rz, k)
+		_fore_r.rotation_degrees.x = lerpf(_fore_r.rotation_degrees.x, rf, k)
+		_arm_l.rotation_degrees.x = lerpf(_arm_l.rotation_degrees.x, lx, k)
+		_arm_l.rotation_degrees.z = lerpf(_arm_l.rotation_degrees.z, lz, k)
+		_fore_l.rotation_degrees.x = lerpf(_fore_l.rotation_degrees.x, lf, k)

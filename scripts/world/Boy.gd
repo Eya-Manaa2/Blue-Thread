@@ -160,6 +160,7 @@ func _build_boy() -> void:
 			for k in 3:
 				Mats.mi(Mats.box(Vector3(0.012, 0.035, 0.01)), Mats.mat(Color(0.05, 0.03, 0.03), 0.5), Vector3(0.1 * sx + (k - 1) * 0.03 * sx + 0.03 * sx, 0.36, -0.29), head, Vector3(0, 0, -25 * sx + k * 12 * sx))
 	_merge_parts()
+	Mats.blob(self, 0.36)
 
 
 ## Fusion des pièces rigides (environ 120 appels de dessin -> une trentaine) :

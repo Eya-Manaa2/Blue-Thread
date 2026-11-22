@@ -194,9 +194,6 @@ func _later(sec: float, f: Callable) -> void:
 #  FABRICATION DES SONS
 # ============================================================
 func _generate_all() -> void:
-	s_ocean = _gen_ocean()
-	s_leaves = _gen_leaves()
-	s_cicadas = _gen_cicadas()
 	for i in 4:
 		s_chirps.append(_gen_chirp())
 	s_gull = _gen_gull()
@@ -219,7 +216,6 @@ func _generate_all() -> void:
 	s_creak = _gen_creak()
 	s_chime = _gen_chime()
 	s_fail = _gen_fail()
-	s_hiss = _gen_hiss()
 	s_machine = _gen_machine()
 	s_piano = _gen_piano()
 	s_pad_major = _gen_pad([261.63, 329.63, 392.0, 523.25])
@@ -563,9 +559,9 @@ func _gen_wave() -> AudioStreamWAV:
 			env = pow(k / 0.25, 2.0)
 		else:
 			env = exp(-(k - 0.25) * 4.0)
-		lp += (w - lp) * (0.03 + 0.25 * env)
-		lp2 += (w - lp2) * 0.4
-		b[i] = lp * env * 1.5 + (w - lp2) * env * 0.4
+		lp += (w - lp) * (0.02 + 0.08 * env)
+		lp2 += (lp - lp2) * 0.3
+		b[i] = lp2 * env * 1.5     # vague sourde, sans souffle aigu
 	return _to_wav(_norm(b, 0.9), rate, false)
 
 
@@ -582,7 +578,7 @@ func _gen_hum() -> AudioStreamWAV:
 		var w: float = rng.randf_range(-1.0, 1.0)
 		lp += (w - lp) * 0.02
 		var wob: float = 1.0 + 0.15 * sin(TAU * 0.25 * t)
-		b[i] = (sin(TAU * 50.0 * t) * 0.5 + sin(TAU * 100.0 * t) * 0.3 + sin(TAU * 150.0 * t) * 0.12) * wob + lp * 2.5
+		b[i] = (sin(TAU * 50.0 * t) * 0.5 + sin(TAU * 100.0 * t) * 0.3 + sin(TAU * 150.0 * t) * 0.12) * wob
 	return _to_wav(_norm(_loop(b, 2000), 0.5), rate, true)
 
 
@@ -785,21 +781,11 @@ func _pad(major: bool, vol_db: float) -> void:
 #  AMBIANCE QUI ÉVOLUE AVEC LA VILLE
 # ============================================================
 func start_ambience() -> void:
-	# (22/11) plus de vent ni de mouches : sons jugés bruyants et gênants.
-	amb_leaves = _make_loop_player(s_leaves)
-	amb_cicadas = _make_loop_player(s_cicadas)
+	# (22/11) AUCUNE boucle de bruit (vent, mouches, mer, feuillage, cigales) :
+	# ces souffles continus étaient perçus comme un vent qui siffle.
+	# Seul reste un ronronnement d'usine très bas, fait de notes pures.
 	amb_hum = _make_loop_player(s_hum)
 	_set_vol(amb_hum, 0.0)
-	_set_vol(amb_leaves, 0.0)
-	_set_vol(amb_cicadas, 0.0)
-	if world != null:
-		amb_ocean = AudioStreamPlayer3D.new()
-		amb_ocean.stream = s_ocean
-		amb_ocean.unit_size = 30.0
-		amb_ocean.max_distance = 400.0
-		world.add_child(amb_ocean)
-		amb_ocean.global_position = Vector3(0, -3, -92)
-		amb_ocean.play()
 	amb_started = true
 
 
@@ -817,9 +803,6 @@ func update(r: float, ch: float, ppos: Vector3, delta: float) -> void:
 	if not amb_started:
 		return
 	_music_tick(r, delta)
-	# nature discrète : feuillage et cigales très bas, seulement quand la côte revit
-	_set_vol(amb_leaves, 0.12 * _smooth(0.3, 0.8, r))
-	_set_vol(amb_cicadas, 0.06 * _smooth(0.55, 0.9, r))
 	# industrie : forte à Gabès, plus douce à Skhira, presque absente à Sidi Mansour
 	if amb_hum != null:
 		var hum_target: float = _hum_level * (1.0 - 0.9 * r)
@@ -832,8 +815,6 @@ func update(r: float, ch: float, ppos: Vector3, delta: float) -> void:
 			_creak_timer = rng.randf_range(16.0, 28.0)
 			var cpos: Vector3 = ppos + Vector3(rng.randf_range(-20.0, 20.0), 2.0, rng.randf_range(10.0, 25.0))
 			_play_3d(s_creak, cpos, -18.0, rng.randf_range(0.8, 1.1), 10.0)
-	if amb_ocean != null:
-		amb_ocean.volume_db = linear_to_db(0.35 + 0.45 * r) - 2.0
 
 	# Les moineaux reviennent sur les toits
 	if r > 0.12:
@@ -859,7 +840,7 @@ func pickup() -> void:
 
 
 func whoosh() -> void:
-	_play(s_whoosh, -6.0, rng.randf_range(0.9, 1.15))
+	_play(s_whoosh, -16.0, rng.randf_range(0.8, 0.95))
 
 
 ## Bon tri : bruit de la matière qui tombe dans le bac + petit tintement
@@ -964,8 +945,8 @@ func low_air_beep() -> void:
 
 ## Recharge O2 : sifflement de pression puis respiration
 func refill() -> void:
-	_play(s_hiss, -4.0)
-	_later(0.9, func(): _play(s_breath, -10.0, 1.1))
+	_play(s_chime, -8.0, 0.9)
+	_later(0.5, func(): _play(s_breath, -16.0, 1.1))
 
 
 ## Étape de recyclage réussie : transformation mécanique
@@ -977,8 +958,8 @@ func machine() -> void:
 func death() -> void:
 	set_music(false)
 	_later(8.0, func(): set_music(true))
-	_play(s_breath, -6.0, 0.85)
-	_later(2.4, func(): _play(s_breath, -10.0, 0.7))
+	_play(s_breath, -12.0, 0.85)
+	_later(2.4, func(): _play(s_breath, -16.0, 0.7))
 	_pad(false, -12.0)
 	_note(-3.0, -10.0, 1.2)      # La
 	_note(-5.0, -11.0, 2.4)      # Sol
@@ -1019,7 +1000,7 @@ func intro_cue(kind: String) -> void:
 		"boy":
 			for k in 4:
 				_later(k * 0.45, func(): _play(s_steps[k % s_steps.size()], -10.0, 0.8))
-			_later(0.3, func(): _play(s_breath, -6.0))
+			_later(0.3, func(): _play(s_breath, -15.0))
 			_later(2.2, func(): _play(s_beep, -10.0))
 			_later(2.6, func(): _play(s_beep, -10.0))
 			_later(3.4, func(): _play(s_creak, -14.0, 0.8))

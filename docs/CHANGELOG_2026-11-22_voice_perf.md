@@ -36,3 +36,10 @@
 - Les deux « boules » des joues et la boule du menton sont supprimées : joues simplement rosées, à fleur de peau ; menton arrondi par un volume intérieur.
 - Nez plus fin (sans narines sombres), yeux un peu plus grands, sillons nez-bouche retirés (ils ressemblaient à des moustaches), sourire plus doux.
 - **Tête agrandie (×1,6)** pour le même style « gros visage expressif » que le petit-fils : son visage paraissait minuscule dans le foulard.
+
+## 22/11 (suite, 12h40) — urgences : vent et lourdeur
+- **Plus aucun son continu de souffle** : les boucles de mer, de feuillage et de cigales (bruit filtré, perçu comme un vent qui siffle) sont supprimées, en plus du vent et des mouches. Le ronronnement d'usine n'est plus fait que de notes pures (sans souffle), très bas. La recharge d'oxygène ne joue plus le sifflement aigu (remplacé par un petit carillon). Les vagues ponctuelles (restauration, fin) sont sourdes, sans souffle aigu.
+- Ambiance restante : petite musique de piano très douce, oiseaux/mouettes rares et bas quand la côte revit, pas, bruitages d'objets.
+- **Version navigateur** : rendu en pixels CSS (`allow_hidpi.web=false` : avant, un écran à 125-150 % calculait 1,5 à 2,3 fois plus de pixels), MSAA coupé, **ombres temps réel coupées** (ombre ronde sous les personnages à la place), fumées et poussière réduites.
+- Mima : plus aucun volume ajouté sur les joues ni le menton (seulement son vieux visage).
+- Fin : face à face (de trois-quarts, les deux visages visibles), réponse de Mima, **câlin**, puis côte à côte main dans la main face à l'océan.

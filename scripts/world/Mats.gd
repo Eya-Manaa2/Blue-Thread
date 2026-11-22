@@ -328,3 +328,19 @@ static func merge_direct(node: Node3D, keep: Array = []) -> void:
 		out.mesh = (sts[m] as SurfaceTool).commit()
 		out.material_override = m
 		node.add_child(out)
+
+
+## Ombre ronde douce sous un personnage (version navigateur, sans ombres)
+static func blob(parent: Node3D, radius: float = 0.38) -> void:
+	if not OS.has_feature("web"):
+		return
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0, 0, 0, 0.32)
+	var n := MeshInstance3D.new()
+	n.mesh = cyl(radius, radius, 0.01, 20)
+	n.material_override = m
+	n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.position = Vector3(0, 0.03, 0)
+	parent.add_child(n)
