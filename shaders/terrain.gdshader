@@ -6,7 +6,7 @@ uniform float restoration : hint_range(0.0, 1.0) = 0.0;
 uniform vec3 sand_col : source_color = vec3(0.70, 0.58, 0.42);
 uniform vec3 wet_col : source_color = vec3(0.36, 0.29, 0.21);
 uniform vec3 pol_col : source_color = vec3(0.20, 0.19, 0.18);
-uniform vec3 grass_col : source_color = vec3(0.34, 0.52, 0.20);
+uniform vec3 grass_col : source_color = vec3(0.24, 0.54, 0.16);
 
 varying vec3 wpos;
 
@@ -29,7 +29,7 @@ void fragment() {
 	c = mix(c, pol_col * (0.75 + 0.5 * n), clamp(pol, 0.0, 1.0) * 0.92);
 	float g = COLOR.g * smoothstep(0.3, 0.9, restoration + (n - 0.5) * 0.35);
 	c = mix(c, grass_col * (0.7 + 0.6 * n), clamp(g, 0.0, 1.0));
-	ALBEDO = c;
+	ALBEDO = c * mix(1.0, 0.86, restoration);
 	ROUGHNESS = mix(0.95, 0.3, wet * 0.85);
 	SPECULAR = 0.25 + wet * 0.35;
 }

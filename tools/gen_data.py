@@ -69,8 +69,15 @@ for b, lab, c, ic in BINS:
     out.append(f'\t"{b}": {{"label": "{lab}", "color": Color({c[0]}, {c[1]}, {c[2]}), "icon": "{ic}"}},')
 out.append('}')
 out.append('')
+# Nom et modèle affichés côté client seulement (l'identifiant et le bac
+# restent ceux du catalogue serveur : la migration SQL ne change pas).
+DISPLAY = {"office_paper": ("Old notebook", "notebook", "A paper notebook is clean fibre: blue PAPER bin."),
+           "broken_mug": ("Broken mug", "mug", "Broken ceramic cannot be recycled here: dark RESIDUAL bin."),
+           "battery": ("Used battery", "battery", "Used batteries leak heavy metals: red SPECIAL bin, never the trash.")}
 out.append('const ITEMS := {')
 for i, b, lab, sh, c, tip in ITEMS + COLLECT_ONLY:
+    if i in DISPLAY:
+        lab, sh, tip = DISPLAY[i]
     out.append(f'\t"{i}": {{"bin": "{b}", "label": "{lab}", "shape": "{sh}", "color": Color({c[0]}, {c[1]}, {c[2]}), "tip": "{tip}"}},')
 out.append('}')
 import os

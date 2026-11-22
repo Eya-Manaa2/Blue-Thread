@@ -20,6 +20,7 @@ var _on_done: Callable
 var _typing: Tween
 var active: bool = false
 var radio_mode: bool = true      # Mima parle par la radio (false : en personne, à la fin)
+var mima_portrait: Texture2D = null   # portrait de Mima (fin, en personne)
 
 
 class Radio extends Control:
@@ -101,9 +102,12 @@ func _show_current() -> void:
 	else:
 		_name.text = who
 	UiKit.set_label_color(_name, UiKit.TEAL if is_mima else Color(1.0, 0.82, 0.45))
-	_portrait_boy.visible = not is_mima
-	_portrait_radio.visible = is_mima
-	if not is_mima and GameState.portrait != null:
+	var mima_face: bool = is_mima and not radio_mode and mima_portrait != null
+	_portrait_boy.visible = not is_mima or mima_face
+	_portrait_radio.visible = is_mima and not mima_face
+	if mima_face:
+		_portrait_boy.texture = mima_portrait
+	elif not is_mima and GameState.portrait != null:
 		_portrait_boy.texture = GameState.portrait
 	_text.text = String(line[1]).replace("{name}", GameState.display_name())
 	_text.visible_ratio = 0.0

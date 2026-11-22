@@ -17,6 +17,9 @@ var level_id: String = "gabes"
 var phase: float = 0.0
 var r: float = 0.0               # restauration affichée (0..1), lissée
 var r_target: float = 0.0
+var _rate: float = 1.6             # vitesse de lissage de la restauration
+var _celebrate: bool = false       # fin de rivage : étincelles sur les plantes qui poussent
+var _sparkles_live: int = 0
 var global_ocean: float = 0.0    # 0..1 (serveur)
 var desaturate: float = 0.0      # 0..1 : scène de mort (couleurs qui s'éteignent)
 var camera: Camera3D = null      # donné par le contrôleur (pour le fond peint)
@@ -357,15 +360,14 @@ func add_obstacles(keep_clear: Array) -> void:
 	var placed: Array = []
 	var tries := 0
 	var n_barrels := 0
-	var n_branches := 0
-	while (n_barrels < 9 or n_branches < 6) and tries < 400:
+	while n_barrels < 12 and tries < 400:
 		tries += 1
 		var x := _rng.randf_range(-36, 36)
 		var z := shore_z(x) + _rng.randf_range(1.5, 20.0)
 		var p := Vector3(x, 0, z)
 		var ok := true
 		# une branche (jusqu'à 4,4 m) dépasse de son centre : marge plus grande
-		var clear_r: float = 3.6 if n_barrels < 9 else 5.4
+		var clear_r: float = 3.6
 		for k in keep_clear:
 			var kp: Vector3 = k
 			if Vector2(kp.x - x, kp.z - z).length() < clear_r:
@@ -382,12 +384,8 @@ func add_obstacles(keep_clear: Array) -> void:
 		if not ok:
 			continue
 		placed.append(p)
-		if n_barrels < 9:
-			_physical_barrel(x, z, n_barrels % 3 == 2)
-			n_barrels += 1
-		else:
-			_physical_branch(x, z)
-			n_branches += 1
+		_physical_barrel(x, z, n_barrels % 3 == 2)
+		n_barrels += 1
 
 
 func _physical_barrel(x: float, z: float, tipped: bool) -> void:
@@ -419,42 +417,10 @@ func _physical_barrel(x: float, z: float, tipped: bool) -> void:
 	_place(body, x, z, -0.05)
 
 
-func _physical_branch(x: float, z: float) -> void:
-	var body := StaticBody3D.new()
-	body.name = "Branch"
-	var wood := Mats.mat(Color(0.30, 0.24, 0.18), 0.95)
-	var length := _rng.randf_range(3.2, 4.4)
-	var trunk := Mats.mi(Mats.capsule(0.36, length), wood, Vector3(0, 0.36, 0), body, Vector3(0, 0, 90))
-	trunk.scale = Vector3(1.0, 1.0, 0.92)
-	for k in 4:
-		var bx: float = -length * 0.35 + k * length * 0.22
-		var tw := Mats.mi(Mats.cyl(0.03, 0.08, _rng.randf_range(0.7, 1.3), 6), wood, Vector3(bx, 0.55, 0), body)
-		tw.rotation_degrees = Vector3(_rng.randf_range(-50, 50), 0, _rng.randf_range(-40, 40))
-	# boîte haute de 1,1 m : un tronc rond et bas se laisserait escalader par
-	# le CharacterBody3D (testé) ; ici le joueur s'arrête et contourne.
-	var col := CollisionShape3D.new()
-	var bx := BoxShape3D.new()
-	bx.size = Vector3(length + 0.5, 1.1, 0.75)
-	col.shape = bx
-	col.position = Vector3(0, 0.55, 0)
-	body.add_child(col)
-	body.rotation_degrees.y = _rng.randf_range(0, 180)
-	_place(body, x, z, 0.0)
-
-
 func _rock(x: float, z: float, s: float) -> void:
 	var m := Mats.mat(Color(0.34, 0.31, 0.28).lerp(Color(_tint.sand), 0.25), 0.9)
 	var n := Mats.mi(Mats.rock(1.0, _rng.randi_range(1, 30), 0.65), m, Vector3.ZERO, self, Vector3(0, _rng.randf_range(0, 360), 0), Vector3(s, s, s) * _rng.randf_range(0.8, 1.2))
 	n.position = Vector3(x, height_at(x, z) - s * 0.15, z)
-
-
-func _driftwood(x: float, z: float) -> void:
-	var m := Mats.mat(Color(0.52, 0.45, 0.38), 0.95)
-	var n := Node3D.new()
-	Mats.mi(Mats.capsule(0.12, 2.4), m, Vector3.ZERO, n, Vector3(0, 0, 90))
-	Mats.mi(Mats.capsule(0.07, 0.9), m, Vector3(0.5, 0.25, 0), n, Vector3(0, 0, 35))
-	n.rotation_degrees.y = _rng.randf_range(0, 360)
-	_place(n, x, z, 0.08)
 
 
 func _net(x: float, z: float) -> void:
@@ -490,7 +456,7 @@ func _dead_tree(x: float, z: float, threshold: float) -> void:
 
 func _palm(x: float, z: float, threshold: float) -> void:
 	var trunk_m := Mats.mat(Color(0.48, 0.38, 0.27), 0.9)
-	var frond_m := Mats.mat(Color(0.24, 0.48, 0.18), 0.75, 0.0, 0.2)
+	var frond_m := Mats.mat(Color(0.16, 0.56, 0.16), 0.7, 0.0, 0.25)
 	var n := Node3D.new()
 	var h := _rng.randf_range(4.5, 6.5)
 	var lean := _rng.randf_range(-8, 8)
@@ -520,7 +486,7 @@ func _palm(x: float, z: float, threshold: float) -> void:
 
 func _olive(x: float, z: float, threshold: float) -> void:
 	var trunk_m := Mats.mat(Color(0.40, 0.34, 0.27), 0.95)
-	var leaf_m := Mats.mat(Color(0.45, 0.55, 0.36), 0.8, 0.0, 0.25)
+	var leaf_m := Mats.mat(Color(0.30, 0.58, 0.24), 0.8, 0.0, 0.25)
 	var n := Node3D.new()
 	Mats.mi(Mats.cyl(0.16, 0.26, 1.6, 9), trunk_m, Vector3(0, 0.8, 0), n, Vector3(0, 0, 6))
 	for k in 6:
@@ -532,17 +498,74 @@ func _olive(x: float, z: float, threshold: float) -> void:
 	_green.append([n, threshold, _rng.randf_range(0.85, 1.2)])
 
 
-func _house(x: float, z: float, w: float, h: float, door: bool = true) -> void:
-	var white := Mats.mat(Color(0.95, 0.94, 0.90), 0.85)
-	var blue := Mats.mat(Color(0.10, 0.36, 0.72), 0.6)
+## Buisson : grappe de boules de feuillage, plusieurs verts
+func _shrub(x: float, z: float, threshold: float) -> void:
+	var greens := [Color(0.18, 0.52, 0.16), Color(0.26, 0.60, 0.20), Color(0.34, 0.62, 0.22), Color(0.14, 0.46, 0.22)]
+	var m := Mats.mat(greens[_rng.randi_range(0, greens.size() - 1)], 0.85, 0.0, 0.2)
 	var n := Node3D.new()
-	Mats.mi(Mats.box(Vector3(w, h, w * 0.8)), white, Vector3(0, h * 0.5, 0), n)
-	Mats.mi(Mats.box(Vector3(w + 0.15, 0.18, w * 0.8 + 0.15)), white, Vector3(0, h + 0.09, 0), n)
-	if door:
-		Mats.mi(Mats.box(Vector3(0.9, 1.9, 0.08)), blue, Vector3(0, 0.95, w * 0.4 + 0.02), n)
-		Mats.mi(Mats.cyl(0.45, 0.45, 0.08, 16), blue, Vector3(0, 1.9, w * 0.4 + 0.02), n, Vector3(90, 0, 0), Vector3(1, 1, 1))
-	Mats.mi(Mats.box(Vector3(0.7, 0.8, 0.08)), blue, Vector3(w * 0.28, h * 0.6, w * 0.4 + 0.02), n)
-	_place(n, x, z, -0.2)
+	var count := _rng.randi_range(3, 5)
+	for k in count:
+		var a: float = TAU * k / count + _rng.randf_range(-0.3, 0.3)
+		var rr: float = _rng.randf_range(0.28, 0.48)
+		Mats.mi(Mats.sphere(rr, -1.0, 12), m, Vector3(cos(a) * 0.32, rr * 0.8, sin(a) * 0.32), n, Vector3.ZERO, Vector3(1, 0.85, 1))
+	Mats.mi(Mats.sphere(0.42, -1.0, 12), m, Vector3(0, 0.55, 0), n)
+	_place(n, x, z, -0.05)
+	n.scale = Vector3.ONE * 0.01
+	_green.append([n, threshold, _rng.randf_range(0.8, 1.3)])
+
+
+## Petites fleurs (tiges + corolles) qui sortent du sol à la fin
+func _flowers(x: float, z: float, threshold: float) -> void:
+	var cols := [Color(0.95, 0.85, 0.20), Color(0.95, 0.40, 0.55), Color(0.70, 0.45, 0.95), Color(0.98, 0.98, 0.95), Color(0.98, 0.55, 0.20)]
+	var stem := Mats.mat(Color(0.22, 0.55, 0.18), 0.8)
+	var head := Mats.mat(cols[_rng.randi_range(0, cols.size() - 1)], 0.6, 0.0, 0.3)
+	var n := Node3D.new()
+	for k in _rng.randi_range(3, 4):
+		var off := Vector3(_rng.randf_range(-0.3, 0.3), 0, _rng.randf_range(-0.3, 0.3))
+		var h: float = _rng.randf_range(0.22, 0.4)
+		Mats.mi(Mats.cyl(0.012, 0.016, h, 5), stem, off + Vector3(0, h * 0.5, 0), n)
+		Mats.mi(Mats.sphere(0.055, -1.0, 8), head, off + Vector3(0, h + 0.02, 0), n, Vector3.ZERO, Vector3(1, 0.55, 1))
+	_place(n, x, z, -0.02)
+	n.scale = Vector3.ONE * 0.01
+	_green.append([n, threshold, _rng.randf_range(0.9, 1.4)])
+
+
+## Fin de rivage : la restauration se joue lentement (plantes en décalé,
+## étincelles quand une plante sort de terre).
+func play_restoration(percent: float) -> void:
+	_rate = 0.42
+	_celebrate = true
+	set_local_restoration(percent)
+
+
+func _sparkle(pos: Vector3) -> void:
+	if _sparkles_live > 14:
+		return
+	_sparkles_live += 1
+	var p := CPUParticles3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.12, 0.12)
+	var pm := Mats.unshaded(Color(0.7, 1.0, 0.6, 0.9), true)
+	pm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	q.material = pm
+	p.mesh = q
+	p.amount = 10
+	p.one_shot = true
+	p.explosiveness = 0.85
+	p.lifetime = 1.2
+	p.direction = Vector3.UP
+	p.spread = 60.0
+	p.initial_velocity_min = 0.8
+	p.initial_velocity_max = 1.8
+	p.gravity = Vector3(0, -0.6, 0)
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.2
+	add_child(p)
+	p.global_position = pos + Vector3(0, 0.5, 0)
+	p.emitting = true
+	get_tree().create_timer(1.6).timeout.connect(func():
+		_sparkles_live -= 1
+		p.queue_free())
 
 
 func _build_common_props() -> void:
@@ -552,9 +575,7 @@ func _build_common_props() -> void:
 		if absf(x) < 7.0 and z > 2.0 and z < 15.0:
 			continue
 		_rock(x, z, _rng.randf_range(0.5, 1.4))
-	for i in 6:
-		var x := _rng.randf_range(-40, 40)
-		_driftwood(x, shore_z(x) + _rng.randf_range(0.5, 5.0))
+	# (bois flottés retirés : ils ressemblaient aux branches tombées supprimées)
 	for i in 3:
 		var x := _rng.randf_range(-35, 35)
 		_net(x, shore_z(x) + _rng.randf_range(0.5, 6.0))
@@ -564,6 +585,19 @@ func _build_common_props() -> void:
 	for i in 7:
 		var x := _rng.randf_range(-42, 42)
 		_dead_tree(x, shore_z(x) + _rng.randf_range(12.0, 26.0), 0.35 + i * 0.06)
+	# buissons et fleurs : ils repoussent avec la restauration (seuils étalés)
+	for i in (8 if low_end else 16):
+		var x := _rng.randf_range(-40, 40)
+		var z := shore_z(x) + _rng.randf_range(7.0, 26.0)
+		if absf(x) < 6.0 and z < 15.0:
+			continue
+		_shrub(x, z, _rng.randf_range(0.28, 0.95))
+	for i in (6 if low_end else 16):
+		var x := _rng.randf_range(-38, 38)
+		var z := shore_z(x) + _rng.randf_range(6.0, 24.0)
+		if absf(x) < 5.0 and z < 15.0:
+			continue
+		_flowers(x, z, _rng.randf_range(0.5, 0.98))
 
 
 func _build_gabes() -> void:
@@ -581,13 +615,10 @@ func _build_gabes() -> void:
 	var outflow := _smoke(pts[pts.size() - 1] + Vector3(0, 0.3, -0.6), 0.5, 0.5, Color(0.28, 0.24, 0.16))
 	outflow.direction = Vector3(0, 0.3, -1)
 	outflow.gravity = Vector3(0, -1.5, -0.5)
-	# oasis : palmiers qui reverdissent, maisons blanches au fond
+	# oasis : palmiers qui reverdissent (maisons blanches retirées)
 	for i in 12:
 		var x := -36.0 + i * 6.5 + _rng.randf_range(-2, 2)
 		_palm(x, shore_z(x) + _rng.randf_range(14.0, 24.0), 0.08 + i * 0.05)
-	_house(-14, 30, 4.0, 3.2)
-	_house(-8, 31, 3.0, 2.6)
-	_house(12, 30, 3.5, 3.0)
 
 
 func _build_skhira() -> void:
@@ -615,17 +646,7 @@ func _build_skhira() -> void:
 		var cz := 18.0 + (k / 3) * 6.5
 		var cont := Mats.mi(Mats.box(Vector3(2.4, 2.5, 6.0)), Mats.mat(cols[k % 4], 0.75, 0.35), Vector3.ZERO, self)
 		cont.position = Vector3(cx2, height_at(cx2, cz) + 1.2 + (2.5 if k == 6 else 0.0), cz)
-	# balles de textiles et tas de vêtements
-	var tcol := [Color(0.75, 0.3, 0.4), Color(0.3, 0.45, 0.75), Color(0.85, 0.75, 0.3), Color(0.4, 0.65, 0.45), Color(0.6, 0.35, 0.7)]
-	for k in 10:
-		var bx := _rng.randf_range(-24, 20)
-		var bz := shore_z(bx) + _rng.randf_range(2.5, 14.0)
-		if absf(bx) < 7.0 and bz < 15.0:
-			continue
-		var heap := Node3D.new()
-		for j in 5:
-			Mats.mi(Mats.sphere(0.45), Mats.mat(tcol[(k + j) % 5], 0.95), Vector3(_rng.randf_range(-0.5, 0.5), 0.15 + j * 0.12, _rng.randf_range(-0.5, 0.5)), heap, Vector3.ZERO, Vector3(1.3, 0.45, 1.1))
-		_place(heap, bx, bz, 0.0)
+	# (tas de couleurs vives retirés : ils ressemblaient à des formes posées au hasard)
 	# épave rouillée dans l'eau
 	var wreck := Node3D.new()
 	wreck.position = Vector3(10, -1.2, -16)
@@ -634,25 +655,12 @@ func _build_skhira() -> void:
 	Mats.mi(Mats.tapered_box(Vector2(2.0, 7.0), Vector2(3.0, 9.0), 3.4), rust, Vector3.ZERO, wreck)
 	Mats.mi(Mats.box(Vector3(4, 2.5, 4)), Mats.mat(Color(0.5, 0.45, 0.4), 0.9, 0.3), Vector3(0, 4.4, 3), wreck)
 	Mats.mi(Mats.cyl(0.5, 0.6, 4, 12), rust, Vector3(0, 6.5, 3), wreck)
-	_house(-6, 32, 4.0, 3.0)
 	for i in 6:
 		var x := 8.0 + i * 5.0
 		_palm(x, shore_z(x) + _rng.randf_range(18.0, 26.0), 0.25 + i * 0.07)
 
 
 func _build_sidi_mansour() -> void:
-	# marabout blanc à coupole sur un promontoire
-	var white := Mats.mat(Color(0.96, 0.95, 0.91), 0.85)
-	var mx := 26.0
-	var mz := shore_z(mx) + 6.0
-	var mar := Node3D.new()
-	Mats.mi(Mats.box(Vector3(5, 3.2, 5)), white, Vector3(0, 1.6, 0), mar)
-	Mats.mi(Mats.cyl(2.0, 2.2, 0.8, 24), white, Vector3(0, 3.6, 0), mar)
-	Mats.mi(Mats.sphere(2.0, 2.4, 28), white, Vector3(0, 4.1, 0), mar)
-	Mats.mi(Mats.cyl(0.05, 0.05, 1.0, 6), Mats.mat(Color(0.7, 0.6, 0.3), 0.4, 0.8), Vector3(0, 5.8, 0), mar)
-	Mats.mi(Mats.box(Vector3(1.1, 2.0, 0.1)), Mats.mat(Color(0.12, 0.45, 0.42), 0.6), Vector3(0, 1.0, 2.52), mar)
-	mar.rotation_degrees.y = -20
-	_place(mar, mx, mz, -0.2)
 	# barques (flouka) échouées
 	for k in 3:
 		var bx := -20.0 + k * 9.0
@@ -686,11 +694,6 @@ func _build_sidi_mansour() -> void:
 	mmi.name = "BottleCarpet"
 	add_child(mmi)
 	_floating.append([mmi, mmi.position, 0.0, 0.85])
-	# maisons blanches aux portes bleues (Sfax)
-	_house(-18, 30, 4.2, 3.3)
-	_house(-11, 31.5, 3.2, 2.8)
-	_house(-3, 32, 4.5, 3.6)
-	_house(6, 31, 3.0, 2.6)
 	for i in 8:
 		var x := -34.0 + i * 9.0
 		_olive(x, shore_z(x) + _rng.randf_range(12.0, 22.0), 0.15 + i * 0.07)
@@ -701,13 +704,16 @@ func _build_vegetation() -> void:
 	var tuft := ArrayMesh.new()
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for a in [0.0, PI * 0.5]:
-		var dx := cos(a) * 0.35
-		var dz := sin(a) * 0.35
-		var v := [Vector3(-dx, 0, -dz), Vector3(dx, 0, dz), Vector3(dx * 0.4, 0.6, dz * 0.4), Vector3(-dx * 0.4, 0.6, -dz * 0.4)]
-		for idx in [0, 1, 2, 0, 2, 3]:
+	# touffe de 7 brins fins et inclinés (au lieu de deux grands triangles)
+	for k in 7:
+		var a: float = TAU * k / 7.0 + 0.3
+		var base := Vector3(cos(a) * 0.05, 0, sin(a) * 0.05)
+		var side := Vector3(-sin(a), 0, cos(a)) * 0.025
+		var h: float = 0.32 + 0.12 * float(k % 3)
+		var tip := base + Vector3(cos(a) * 0.14, h, sin(a) * 0.14)
+		for vtx in [base - side, base + side, tip]:
 			st.set_normal(Vector3.UP)
-			st.add_vertex(v[idx])
+			st.add_vertex(vtx)
 	tuft = st.commit()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -723,7 +729,7 @@ func _build_vegetation() -> void:
 		mm.set_instance_transform(i, Transform3D(b.scaled(Vector3.ONE * 0.001), p))
 	_grass = MultiMeshInstance3D.new()
 	_grass.multimesh = mm
-	var gm := Mats.mat(Color(0.38, 0.58, 0.22), 0.8)
+	var gm := Mats.mat(Color(0.26, 0.62, 0.18), 0.8)
 	gm = gm.duplicate() as StandardMaterial3D
 	gm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_grass.material_override = gm
@@ -767,7 +773,10 @@ func _build_gulls() -> void:
 # ================================================================== restauration
 func _process(delta: float) -> void:
 	_t += delta
-	r = lerpf(r, r_target, 1.0 - exp(-1.6 * delta))
+	r = lerpf(r, r_target, 1.0 - exp(-_rate * delta))
+	if _celebrate and absf(r - r_target) < 0.003:
+		_celebrate = false
+		_rate = 1.6
 	_apply(false)
 	# déchets flottants qui dansent puis disparaissent
 	for f in _floating:
@@ -799,6 +808,11 @@ func _process(delta: float) -> void:
 			if n3.scale.x > 0.02:
 				var near: bool = Vector2(n3.global_position.x - cam_p.x, n3.global_position.z - cam_p.z).length() < 6.5 and n3.global_position.z < cam_p.z + 1.0
 				n3.visible = not near
+		for d in _dead_trees:
+			var n4: Node3D = d[0]
+			if n4.scale.x > 0.02:
+				var near2: bool = Vector2(n4.global_position.x - cam_p.x, n4.global_position.z - cam_p.z).length() < 7.5 and n4.global_position.z > cam_p.z - 9.0
+				n4.visible = not near2
 	if camera != null and matte != null:
 		var cp: Vector3 = camera.global_position
 		matte.position.x = cp.x
@@ -811,8 +825,8 @@ func _apply(force: bool) -> void:
 	if env == null:
 		return
 	var t: Dictionary = _tint
-	var clean_top := Color(0.16, 0.42, 0.82)
-	var clean_hor := Color(0.66, 0.82, 0.94)
+	var clean_top := Color(0.14, 0.44, 0.88)
+	var clean_hor := Color(0.62, 0.82, 0.96)
 	var k: float = smoothstep(0.0, 1.0, r)
 	sky_mat.sky_top_color = Color(t.sky_top).lerp(clean_top, k)
 	sky_mat.sky_horizon_color = Color(t.sky_hor).lerp(clean_hor, k)
@@ -820,15 +834,15 @@ func _apply(force: bool) -> void:
 	sky_mat.ground_bottom_color = Color(0.2, 0.17, 0.14).lerp(Color(0.1, 0.3, 0.45), k)
 	sky_mat.sky_energy_multiplier = lerpf(0.9, 1.05, k)
 	env.fog_light_color = Color(t.fog).lerp(Color(0.58, 0.72, 0.86), k)
-	env.fog_density = lerpf(0.0095, 0.0028, k)
+	env.fog_density = lerpf(0.0095, 0.0016, k)
 	env.adjustment_saturation = lerpf(0.82, 1.12, k) * (1.0 - 0.75 * desaturate)
 	env.adjustment_contrast = lerpf(1.08, 1.04, k)
 	sun.light_color = Color(t.sun).lerp(Color(1.0, 0.96, 0.88), k)
-	sun.light_energy = lerpf(1.15, 1.2, k)
-	env.tonemap_exposure = lerpf(1.0, 0.8, k)
+	sun.light_energy = lerpf(1.15, 1.0, k)
+	env.tonemap_exposure = lerpf(1.0, 0.82, k)
 	if env.glow_enabled:
 		env.glow_intensity = lerpf(0.45, 0.2, k)
-	env.ambient_light_energy = lerpf(0.85, 0.6, k)
+	env.ambient_light_energy = lerpf(0.85, 0.5, k)
 	sun.rotation_degrees.x = lerpf(-14.0, -38.0, k)
 	sea_mat.set_shader_parameter("restoration", k)
 	sea_mat.set_shader_parameter("sky_col", sky_mat.sky_horizon_color)
@@ -836,7 +850,7 @@ func _apply(force: bool) -> void:
 	if matte_mat != null:
 		# Skhira / Sidi Mansour : fond peint (côte en partie restaurée) toujours visible.
 		# Gabès : fond pollué (usines fumantes) qui s'efface quand l'histoire atteint 100 %.
-		var a: float = 1.0
+		var a: float = 1.0 - 0.75 * smoothstep(0.75, 1.0, r)
 		if level_id == "gabes":
 			a = 1.0 - 0.9 * smoothstep(0.55, 1.0, r)
 		matte_mat.albedo_color = Color(0.92, 0.9, 0.88, a).lerp(Color(1.0, 1.0, 1.04, a), k)
@@ -851,8 +865,13 @@ func _apply(force: bool) -> void:
 	for g in _green:
 		var n2: Node3D = g[0]
 		var grow: float = smoothstep(float(g[1]), float(g[1]) + 0.18, r) * float(g[2])
+		if _celebrate and grow > 0.01 and n2.scale.x <= 0.011:
+			_sparkle(n2.global_position)
 		n2.scale = Vector3.ONE * maxf(0.001, grow)
 		n2.visible = grow > 0.01
+		if n2.visible:
+			# feuillage qui ondule doucement au vent
+			n2.rotation.z = sin(_t * 1.3 + n2.position.x * 0.7) * 0.035
 	if _dust_mat != null:
 		_dust_mat.albedo_color = Color(0.85, 0.7, 0.5, 0.5 * (1.0 - k))
 	if _grass != null and (force or absf(_grass_r - r) > 0.02):
@@ -862,4 +881,4 @@ func _apply(force: bool) -> void:
 			var e: Array = _grass_xf[i]
 			var s2: float = smoothstep(0.25 + float(e[2]) * 0.5, 0.45 + float(e[2]) * 0.5, r)
 			var b: Basis = e[0]
-			mm.set_instance_transform(i, Transform3D(b.scaled(Vector3.ONE * maxf(0.001, s2 * 1.3)), e[1]))
+			mm.set_instance_transform(i, Transform3D(b.scaled(Vector3.ONE * maxf(0.001, s2 * 1.1)), e[1]))

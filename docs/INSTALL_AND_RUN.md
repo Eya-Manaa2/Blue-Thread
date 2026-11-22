@@ -5,8 +5,9 @@
 2. F5 lance `scenes/Main.tscn` (point d'entrée inchangé).
 3. Commandes : WASD / ZQSD / flèches ou joystick tactile (moitié gauche de l'écran) ;
    Espace / E / clic = continuer ; 1-5 = choisir un bac ; Échap = pause.
-4. Mode jury : bouton **JURY DEMO MODE** dans le menu (ou touche J). En jeu, **F2** saute la phase en cours ;
-   l'air descend lentement et on ne perd pas son dernier cœur. Sur le web : ajouter `?demo=1` à l'URL.
+4. Mode jury : touche **J** dans le menu (aucun bouton visible). En jeu, **F2** saute la phase en cours et on ne
+   perd pas son dernier cœur ; dans le menu, **F3** montre directement la fin. Sur le web : ajouter `?demo=1` à l'URL.
+   L'oxygène suit toujours la règle : 1 unité toutes les 0,7 s ; deux recharges pour toute l'aventure.
 5. HUD réseau : pastille en haut à droite (clic ou N = détails, Tab = statistiques serveur, F9 = « 5G vérifiée »
    uniquement après vérification réelle du réseau).
 
@@ -20,8 +21,10 @@
 Tant que la migration n'est pas appliquée, le jeu lit l'ancien océan (v1) et la pastille affiche « schema v1 ».
 
 ## Export web (itch.io)
-Projet > Exporter > Web > chemin vers un **nouveau dossier** (ex. `exports/web5/index.html`), compresser le contenu
-du dossier en zip, téléverser sur itch.io (Kind: HTML, 1280x720, mobile friendly, SharedArrayBuffer désactivé).
+Projet > Exporter > Web > chemin vers un **nouveau dossier** (ex. `exports/web7/index.html`), décocher
+« Exporter avec debug », compresser le contenu du dossier en zip, puis sur itch.io : Edit game > Uploads >
+supprimer l'ancien zip > Upload files > cocher « This file will be played in the browser » > Save
+(Kind: HTML, 1280x720, mobile friendly, SharedArrayBuffer désactivé). Recharger la page avec Ctrl + F5.
 
 ## Vidéo d'intro (optionnelle)
 Déposer une vidéo Theora `assets/video/intro.ogv` : elle remplace automatiquement le diaporama.

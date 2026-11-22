@@ -15,6 +15,7 @@ var _air_gauge: Gauge
 var _air_lbl: Label
 var _obj_lbl: Label
 var _timer_lbl: Label
+var _refill_lbl: Label
 var _name_lbl: Label
 var _obj_panel: PanelContainer
 var _arrow: Arrow
@@ -135,6 +136,9 @@ func _ready() -> void:
 	air_row.add_child(_air_gauge)
 	_air_lbl = UiKit.label("AIR 100%", 15, UiKit.PAPER, "bold")
 	air_row.add_child(_air_lbl)
+	# recharges O2 restantes pour toute l'aventure (discret)
+	_refill_lbl = UiKit.label("", 13, UiKit.MUTED, "bold")
+	v.add_child(_refill_lbl)
 
 	# ---- objectif en haut au centre + flèche
 	_obj_panel = UiKit.panel(Color(0.03, 0.05, 0.08, 0.72), 22)
@@ -212,6 +216,8 @@ func _ready() -> void:
 	GameState.air_changed.connect(_on_air)
 	GameState.restoration_changed.connect(_on_restoration)
 	GameState.heart_lost.connect(_on_heart_lost)
+	GameState.refills_changed.connect(_on_refills)
+	_on_refills(GameState.refills_remaining)
 	_on_score(GameState.score, 0, "")
 	_on_hearts(GameState.hearts)
 	_on_air(GameState.air)
@@ -339,11 +345,16 @@ func _on_hearts(h: int) -> void:
 			tw.tween_property(t, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BOUNCE)
 
 
+func _on_refills(left: int) -> void:
+	_refill_lbl.text = "O2 REFILLS LEFT: %d / %d" % [left, GameData.MAX_REFILLS]
+	UiKit.set_label_color(_refill_lbl, UiKit.MUTED if left > 0 else UiKit.BAD)
+
+
 func _on_air(a: float) -> void:
 	_air_gauge.value = a / GameState.MAX_AIR
 	_low_air = a < 25.0
 	_air_gauge.color = Color(1.0, 0.3, 0.25) if _low_air else Color(0.35, 0.85, 1.0)
-	_air_lbl.text = "AIR %d%%" % int(round(a))
+	_air_lbl.text = "AIR %d%%" % int(ceil(a - 0.001))
 	_air_gauge.queue_redraw()
 
 

@@ -20,12 +20,14 @@ signal restoration_changed(percent: float)
 signal heart_lost(reason: String)
 signal out_of_hearts
 signal profile_changed
+signal refills_changed(left: int)
 
 const SAVE_PATH := "user://blue_thread_save.cfg"
 const MAX_HEARTS := 3
 const MAX_AIR := 100.0
-const AIR_DRAIN := 1.0             # règle stricte : 1 unité d'oxygène par seconde d'exploration
-const AIR_DRAIN_DEMO := 1.0        # même règle en mode jury
+## Règle stricte : UNE unité d'oxygène toutes les 0,7 s d'exploration active
+## (100 unités ≈ 70 s), indépendante du nombre d'images par seconde.
+const AIR_SECONDS_PER_UNIT := 0.7
 
 const PTS_SORT_OK := 10
 const PTS_SORT_BAD := -5
@@ -44,6 +46,8 @@ var inventory: Dictionary = {}          # level_id -> [item_id, ...] (objets UTI
 var stats: Dictionary = {}
 var player_name: String = ""
 var avatar_id: int = -1
+var refills_remaining: int = 2           # recharges O2 pour TOUTE l'aventure (jamais remises en cours de partie)
+var sea_trail: Array = []               # sillage du bateau sur la carte (Vector2), persistant
 var portrait: Texture2D = null          # portrait de l'avatar (généré à la validation du profil)
 var _level_snapshot: Dictionary = {}
 
@@ -108,6 +112,9 @@ func new_game() -> void:
 	rewards.clear()
 	completed.clear()
 	inventory.clear()
+	sea_trail.clear()
+	refills_remaining = GameData.MAX_REFILLS
+	refills_changed.emit(refills_remaining)
 	current_level = ""
 	reset_stats()
 	set_local_restoration(0.0)
@@ -198,18 +205,30 @@ func lose_heart(reason: String) -> void:
 		out_of_hearts.emit()
 
 
-## Oxygène : exactement 1 unité par seconde (delta en secondes, indépendant du framerate).
+## Oxygène : air = maxf(air - delta / 0,7, 0) — une unité toutes les 0,7 s.
 ## Renvoie true quand l'air vient d'atteindre zéro.
 func drain_air(delta: float) -> bool:
-	var rate: float = AIR_DRAIN_DEMO if demo_mode else AIR_DRAIN
-	air = maxf(air - rate * delta, 0.0)
+	air = maxf(air - delta / AIR_SECONDS_PER_UNIT, 0.0)
 	air_changed.emit(air)
 	return air <= 0.0
 
 
+## Remet la jauge au maximum (début de rivage, point de contrôle après la mort).
+## Ne consomme PAS de recharge : voir use_refill().
 func refill_air(amount: float = MAX_AIR) -> void:
 	air = clampf(amount, 0.0, MAX_AIR)
 	air_changed.emit(air)
+
+
+## Station O2 : consomme une des deux recharges de l'aventure. false s'il n'en reste plus.
+func use_refill() -> bool:
+	if refills_remaining <= 0:
+		return false
+	refills_remaining -= 1
+	refill_air()
+	refills_changed.emit(refills_remaining)
+	save_game()
+	return true
 
 
 func set_local_restoration(p: float) -> void:
@@ -274,6 +293,8 @@ func save_game() -> void:
 	cf.set_value("progress", "rewards", rewards)
 	cf.set_value("progress", "score", score)
 	cf.set_value("progress", "inventory", inventory)
+	cf.set_value("progress", "refills", refills_remaining)
+	cf.set_value("progress", "sea_trail", sea_trail)
 	cf.save(SAVE_PATH)
 
 
@@ -288,6 +309,8 @@ func load_game() -> void:
 	rewards = cf.get_value("progress", "rewards", [])
 	score = int(cf.get_value("progress", "score", 0))
 	inventory = cf.get_value("progress", "inventory", {})
+	refills_remaining = clampi(int(cf.get_value("progress", "refills", GameData.MAX_REFILLS)), 0, GameData.MAX_REFILLS)
+	sea_trail = cf.get_value("progress", "sea_trail", [])
 
 
 ## Les actions clavier sont créées ici : project.godot n'a pas de carte d'entrées.

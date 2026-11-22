@@ -140,7 +140,7 @@ class Stage extends Control:
 						_flash_col = Color(1.0, 0.3, 0.3)
 						_shake = 0.3
 						if owner_p.sfx != null:
-							owner_p.sfx.bad()
+							owner_p.sfx.fail()
 
 	func _gui_input(e: InputEvent) -> void:
 		if done:
@@ -274,7 +274,7 @@ class Stage extends Control:
 						_flash = 1.0
 						_flash_col = Color(1, 0.3, 0.3)
 						if owner_p.sfx != null:
-							owner_p.sfx.bad()
+							owner_p.sfx.fail()
 					progress = clampf(_timer / (goal * (0.6 if demo else 1.0)), 0.0, 1.0)
 					_check()
 				"timing":
@@ -469,11 +469,11 @@ func _ready() -> void:
 	v.add_child(_chips)
 	_title = UiKit.label("", 30, UiKit.PAPER, "black")
 	v.add_child(_title)
-	_verb = UiKit.label("", 19, UiKit.TEAL, "bold")
+	_verb = UiKit.label("", 18, UiKit.PAPER, "regular")
 	_verb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_verb.custom_minimum_size = Vector2(680, 0)
 	v.add_child(_verb)
-	_why = UiKit.label("", 15, Color(1.0, 0.86, 0.5), "regular")
+	_why = UiKit.label("", 19, UiKit.TEAL, "bold")
 	_why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_why.custom_minimum_size = Vector2(680, 0)
 	v.add_child(_why)
@@ -543,8 +543,9 @@ func _load_step() -> void:
 		chip.add_child(UiKit.label(("%d  %s" % [i + 1, s.title]) if i == idx else str(i + 1), 12, UiKit.PAPER, "black"))
 		_chips.add_child(chip)
 	_title.text = String(st.title)
-	_verb.text = "WHAT TO DO: " + String(st.verb)
-	_why.text = "WHY IT MATTERS: " + String(st.get("why", ""))
+	# nom de l'étape + une phrase d'explication + une action claire
+	_verb.text = "\u201c%s\u201d" % String(st.get("why", ""))
+	_why.text = "ACTION: " + String(st.verb)
 	_hint.text = String(st.hint)
 	UiKit.set_label_color(_hint, UiKit.MUTED)
 	_status.text = "Step %d / %d   ·   +%d pts" % [idx + 1, steps.size(), GameState.PTS_STEP]
@@ -556,6 +557,8 @@ func _on_step_done() -> void:
 	GameState.step_done(String(st.id))
 	step_completed.emit(String(st.id))
 	if sfx != null:
+		if sfx.has_method("machine"):
+			sfx.machine()
 		sfx.milestone()
 	_stamp.text = "%s\n+%d" % [String(st.get("done", "STEP COMPLETE")), GameState.PTS_STEP]
 	_stamp.visible = true

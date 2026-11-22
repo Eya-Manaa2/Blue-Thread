@@ -19,7 +19,7 @@ signal sort_result(item_id: String, is_correct: bool, correct_bin: String)
 # Ne JAMAIS mettre la clé secrète / service_role : le jeu web est public.
 const SUPABASE_URL := "https://aqkvatlviikgoowhqbur.supabase.co"
 const SUPABASE_KEY := "sb_publishable_cZujiLIhESaQ5Nq9ym_rhw_xgyVvP-p"
-const POLL_INTERVAL := 2.5          # secondes entre deux lectures de l'océan global
+const POLL_INTERVAL := 3.5          # secondes entre deux lectures de l'océan global (moins de requêtes)
 const MAX_QUEUE := 50               # tris gardés en attente si le réseau tombe
 
 var session_id: String = ""
@@ -84,14 +84,14 @@ window.btNet = function (cb) {
 		browser_offline = not bool(on_line)
 
 	_http_submit = HTTPRequest.new()
-	_http_submit.timeout = 8.0
+	_http_submit.timeout = 6.0
 	# Web : le navigateur décompresse déjà les réponses ; Godot ne doit pas le refaire
 	_http_submit.accept_gzip = false
 	add_child(_http_submit)
 	_http_submit.request_completed.connect(_on_submit_done)
 
 	_http_poll = HTTPRequest.new()
-	_http_poll.timeout = 8.0
+	_http_poll.timeout = 6.0
 	_http_poll.accept_gzip = false
 	add_child(_http_poll)
 	_http_poll.request_completed.connect(_on_poll_done)
@@ -141,7 +141,18 @@ func submit_sort(item_id: String, selected_bin: String, reaction_ms: int) -> voi
 
 
 ## THE LAST BLUE : 5 bacs paper/textile/pet/residual/special + identifiant du niveau.
+var _last_sort_key: String = ""
+var _last_sort_msec: int = -10000
+
+
 func submit_sort_v2(item_id: String, selected_bin: String, reaction_ms: int, level_id: String) -> void:
+	# anti-doublon : le même tri envoyé deux fois en moins de 0,5 s est ignoré
+	var key: String = "%s|%s|%s" % [item_id, selected_bin, level_id]
+	var now: int = Time.get_ticks_msec()
+	if key == _last_sort_key and now - _last_sort_msec < 500:
+		return
+	_last_sort_key = key
+	_last_sort_msec = now
 	_enqueue("submit_sort_v2", {
 		"p_session_id": session_id,
 		"p_level_id": level_id,

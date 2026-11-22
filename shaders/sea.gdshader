@@ -7,8 +7,8 @@ uniform float restoration : hint_range(0.0, 1.0) = 0.0;
 uniform float phase = 0.0;
 uniform vec3 dirty_deep : source_color = vec3(0.07, 0.09, 0.07);
 uniform vec3 dirty_shallow : source_color = vec3(0.22, 0.22, 0.15);
-uniform vec3 clean_deep : source_color = vec3(0.02, 0.20, 0.40);
-uniform vec3 clean_shallow : source_color = vec3(0.08, 0.62, 0.68);
+uniform vec3 clean_deep : source_color = vec3(0.01, 0.12, 0.40);
+uniform vec3 clean_shallow : source_color = vec3(0.02, 0.46, 0.62);
 uniform vec3 sky_col : source_color = vec3(0.8, 0.6, 0.4);
 
 varying vec3 wpos;
@@ -56,9 +56,9 @@ void fragment() {
 
 	// reflet du ciel en incidence rasante
 	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
-	col = mix(col, sky_col, fr * 0.3);
+	col = mix(col, sky_col, fr * mix(0.3, 0.08, restoration));
 
 	ALBEDO = col;
-	ROUGHNESS = mix(0.16, 0.05, restoration) + f * 0.5;
-	SPECULAR = 0.8;
+	ROUGHNESS = mix(0.16, 0.2, restoration) + f * 0.5;
+	SPECULAR = mix(0.8, 0.3, restoration);
 }

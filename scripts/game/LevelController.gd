@@ -25,11 +25,13 @@ const ModalScript := preload("res://scripts/ui/Modal.gd")
 const JoystickScript := preload("res://scripts/joystick.gd")
 const BEAM_SHADER := preload("res://shaders/beam.gdshader")
 
-enum Phase { INTRO, COLLECT, TO_STATION, SORT, WORKBENCH, PUZZLE, REWARD, RESULTS, DEAD }
+enum Phase { INTRO, COLLECT, TO_STATION, SORT, WORKBENCH, PUZZLE, REWARD, RESTORE, RESULTS, DEAD }
 
-const COLLECT_SPOTS := [Vector2(-28, 2.5), Vector2(-14, 10.0), Vector2(13, 3.0), Vector2(27, 9.0), Vector2(-5, 5.5)]
-const REFILL_SPOTS := [Vector2(-21, 6.0), Vector2(20, 14.0), Vector2(7, 1.8)]
-const DISTRACTOR_SPOTS := [Vector2(-21, 12.5), Vector2(5, 10.5), Vector2(22, 4.5), Vector2(-33, 8.0)]
+## Trajets raccourcis : 100 unités d'air ≈ 70 s, deux recharges pour toute l'aventure.
+const COLLECT_SPOTS := [Vector2(-18, 2.5), Vector2(-10, 10.0), Vector2(10, 3.0), Vector2(18, 9.0), Vector2(-4, 5.5)]
+const REFILL_SPOTS := [Vector2(-14, 6.5), Vector2(14, 13.0), Vector2(6, 1.8)]
+const DISTRACTOR_SPOTS := [Vector2(-14, 12.5), Vector2(4, 10.5), Vector2(15, 5.0), Vector2(-22, 8.0)]
+const REFILL_BELOW := 75.0      # une station ne sert que si l'air est sous ce niveau
 
 var level_id: String = "gabes"
 var sfx: Node = null
@@ -109,6 +111,8 @@ func _ready() -> void:
 	add_child(boy)
 	if sfx != null:
 		boy.on_step = Callable(sfx, "step")
+		if sfx.has_method("set_level"):
+			sfx.set_level(level_id)
 
 	cam = Camera3D.new()
 	cam.fov = 55.0
@@ -269,7 +273,7 @@ func _spawn_refills() -> void:
 		root.add_child(light)
 		var lbl := Mats.label3d("O2", 72, Color(0.6, 0.92, 1.0), root, Vector3(0, 2.0, 0))
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		refills.append({"root": root, "ring": ring, "light": light, "cool": 0.0})
+		refills.append({"root": root, "ring": ring, "light": light, "cool": 0.0, "label": lbl, "told": false})
 
 
 # ================================================================ boucle
@@ -301,30 +305,49 @@ func _process(delta: float) -> void:
 			else:
 				_take(c)
 
+	var empty: bool = GameState.refills_remaining <= 0
 	for r in refills:
 		r.cool = maxf(0.0, float(r.cool) - delta)
 		var ring: Node3D = r.ring
-		ring.rotation.y += delta
-		(r.light as OmniLight3D).light_energy = 0.3 if float(r.cool) > 0.0 else 1.2 + sin(_t * 4.0) * 0.4
-		if (phase == Phase.COLLECT or phase == Phase.TO_STATION) and float(r.cool) <= 0.0 and GameState.air < 92.0:
-			if _flat_dist(bp, (r.root as Node3D).global_position) < 2.0:
-				r.cool = 8.0
-				GameState.refill_air()
-				boy.set_air_warning(false)
-				_air_warned = false
-				hud.toast("AIR REFILLED", Color(0.5, 0.9, 1.0))
-				if sfx != null:
-					sfx.whoosh()
+		ring.rotation.y += delta * (0.2 if empty else 1.0)
+		(r.light as OmniLight3D).light_energy = 0.15 if (empty or float(r.cool) > 0.0) else 1.2 + sin(_t * 4.0) * 0.4
+		(r.label as Label3D).text = "EMPTY" if empty else "O2"
+		(r.label as Label3D).modulate = Color(0.6, 0.6, 0.65) if empty else Color(0.6, 0.92, 1.0)
+		var near_st: bool = _flat_dist(bp, (r.root as Node3D).global_position) < 2.0
+		if not near_st:
+			r.told = false
+		if (phase == Phase.COLLECT or phase == Phase.TO_STATION) and near_st and float(r.cool) <= 0.0:
+			if empty:
+				if not bool(r.told):
+					r.told = true
+					hud.toast("NO REFILLS LEFT", UiKit.BAD)
+					if sfx != null and sfx.has_method("fail"):
+						sfx.fail()
+			elif GameState.air < REFILL_BELOW:
+				if GameState.use_refill():
+					r.cool = 8.0
+					boy.set_air_warning(false)
+					_air_warned = false
+					var left: int = GameState.refills_remaining
+					hud.toast("AIR REFILLED  ·  %d refill%s left" % [left, "" if left == 1 else "s"], Color(0.5, 0.9, 1.0))
+					if sfx != null and sfx.has_method("refill"):
+						sfx.refill()
+			elif not bool(r.told):
+				r.told = true
+				hud.toast("Air still above %d%%: keep your refill" % int(REFILL_BELOW), UiKit.MUTED)
 
 	# oxygène : uniquement pendant l'exploration active (pas de dialogue, pas de menu)
 	var exploring: bool = (phase == Phase.COLLECT or phase == Phase.TO_STATION) and not dialog.active and not modal.is_open and not _death_active
 	if exploring:
 		if GameState.drain_air(delta):
 			_die()
-		elif GameState.air < 25.0 and not _air_warned:
-			_air_warned = true
-			boy.set_air_warning(true)
-			hud.toast("LOW AIR! Find a blue O2 station", UiKit.BAD)
+		elif GameState.air < 25.0:
+			if sfx != null and sfx.has_method("low_air_beep"):
+				sfx.low_air_beep()
+			if not _air_warned:
+				_air_warned = true
+				boy.set_air_warning(true)
+				hud.toast("LOW AIR! Find a blue O2 station" if GameState.refills_remaining > 0 else "LOW AIR! No refills left - hurry", UiKit.BAD)
 	# chronomètre de collecte (en pause pendant dialogues / menus / mort)
 	if exploring and phase == Phase.COLLECT:
 		_time_left = maxf(0.0, _time_left - delta)
@@ -359,7 +382,10 @@ func _process(delta: float) -> void:
 			hud.set_arrow(NAN)
 
 	if _sort_node != null:
-		_sort_node.rotation.y += delta * 1.2
+		if bool(_sort_node.get_meta("flat", false)):
+			_sort_node.rotation.y = sin(_t * 1.1) * 0.4     # objet plat : incliné vers la caméra, léger balancement
+		else:
+			_sort_node.rotation.y += delta * 1.2
 
 	_update_camera(delta)
 	if sfx != null and sfx.has_method("update"):
@@ -399,6 +425,10 @@ func _update_camera(delta: float) -> void:
 		Phase.DEAD:
 			tp = bp + _dead_cam_off
 			tl = bp + Vector3(0.0, 0.35, 0.0)
+		Phase.RESTORE:
+			# vue large vers la côte et la mer qui s'éclaircit
+			tp = Vector3(bp.x * 0.3, 8.5, 15.0)
+			tl = Vector3(bp.x * 0.2, -1.0, -22.0)
 		Phase.REWARD, Phase.RESULTS:
 			var a: float = _t * 0.25
 			var c: Vector3 = bench_pos + Vector3(0, 1.4, 0.2)
@@ -439,7 +469,10 @@ func _take(c: Dictionary) -> void:
 	GameState.collect(String(c.id))
 	_update_restoration()
 	if sfx != null:
-		sfx.pickup()
+		if sfx.has_method("chime"):
+			sfx.chime()
+		else:
+			sfx.pickup()
 	var it: Dictionary = GameData.item(String(c.id))
 	hud.toast("+%d  %s" % [GameState.PTS_COLLECT, it.get("label", "")], Color(1.0, 0.86, 0.4))
 	var root: Node3D = c.root
@@ -473,7 +506,7 @@ func _take_distractor(c: Dictionary) -> void:
 	hud.flash_timer_penalty()
 	GameState.distractor_picked()
 	if sfx != null:
-		sfx.bad()
+		sfx.fail()
 	var it: Dictionary = GameData.item(String(c.id))
 	var label: String = String(it.get("label", c.id))
 	var why: String = String(it.get("tip", ""))
@@ -517,7 +550,7 @@ func _die() -> void:
 	boy.velocity = Vector3.ZERO
 	boy.set_air_warning(true)
 	if sfx != null:
-		sfx.bad()
+		sfx.death()
 	_dead_cam_off = _pick_death_cam(boy.global_position)
 	var tw: Tween = boy.collapse()
 	tw.finished.connect(_death_line)
@@ -685,10 +718,28 @@ func _next_sort_item() -> void:
 	_sort_item = String(_sort_queue.pop_front())
 	var it: Dictionary = GameData.item(_sort_item)
 	_sort_name.text = String(it.get("label", _sort_item)).to_upper()
-	_sort_node = ItemFactory.build(_sort_item)
+	# support qui tourne ; les objets plats (journal, cahier, vêtements…) sont
+	# inclinés vers la caméra pour être reconnaissables d'un coup d'œil
+	_sort_node = Node3D.new()
 	_sort_node.scale = Vector3.ONE * 0.01
 	add_child(_sort_node)
-	_sort_node.global_position = station_pos + Vector3(0, 1.8, 1.7)
+	var model := ItemFactory.build(_sort_item)
+	_sort_node.add_child(model)
+	var shape: String = String(GameData.item(_sort_item).get("shape", ""))
+	if shape in ["sheet", "notebook", "tshirt", "sweater", "scarf", "stack", "cloth", "envelope"]:
+		model.rotation_degrees.x = 62.0
+		model.position = Vector3(0, 0.12, 0)
+		_sort_node.set_meta("flat", true)
+	# halo de sélection : l'objet à trier est bien visible et lisible
+	var halo := Mats.mi(Mats.torus(0.26, 0.3, 32), Mats.emissive(Color(0.55, 0.9, 1.0), 2.2), Vector3(0, -0.02, 0), _sort_node)
+	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var hl := OmniLight3D.new()
+	hl.light_color = Color(0.8, 0.95, 1.0)
+	hl.light_energy = 1.4
+	hl.omni_range = 1.6
+	hl.position = Vector3(0, 0.35, 0.35)
+	_sort_node.add_child(hl)
+	_sort_node.global_position = station_pos + Vector3(0, 1.7, 2.6)
 	var tw := create_tween()
 	tw.tween_property(_sort_node, "scale", Vector3.ONE * 2.0, 0.3).set_trans(Tween.TRANS_BACK)
 	_sort_start = Time.get_ticks_msec()
@@ -729,7 +780,7 @@ func _choose_bin(bin_id: String) -> void:
 	else:
 		_combo = 0
 		if sfx != null:
-			sfx.bad()
+			sfx.fail()
 		var cb: String = String(res.correct_bin)
 		_tip_title.text = "WRONG BIN  %d   ·   -1 HEART" % GameState.PTS_SORT_BAD
 		_tip_text.text = "%s\nCorrect bin: %s" % [res.tip, GameData.BINS[cb].label]
@@ -860,7 +911,6 @@ func _on_puzzle_finished() -> void:
 	_set_phase(Phase.REWARD)
 	hud.set_objective("New life!")
 	var res: Dictionary = GameState.complete_level(level_id)
-	world.set_local_restoration(float(lv.r_to))
 	for s in _bench_items:
 		if not is_instance_valid(s):
 			continue
@@ -882,13 +932,34 @@ func _on_puzzle_finished() -> void:
 	var tw := create_tween()
 	tw.tween_property(_reward_node, "scale", Vector3.ONE * 1.5, 0.6).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	if sfx != null:
-		sfx.finale()
+		if sfx.has_method("hopeful"):
+			sfx.hopeful()
+		else:
+			sfx.finale()
 	hud.toast("NEW LIFE: %s" % lv.reward_label, Color(1.0, 0.86, 0.4), true)
 	var spin := create_tween().set_loops()
 	spin.tween_property(_reward_node, "rotation:y", TAU, 6.0).as_relative()
 	var tw2 := create_tween()
-	tw2.tween_interval(2.2)
-	tw2.tween_callback(func():
+	tw2.tween_interval(2.4)
+	tw2.tween_callback(_start_restore.bind(res))
+
+
+## Le rivage revit : la caméra part vers la côte, la pollution s'efface, la mer
+## bleuit, les plantes sortent de terre en décalé (étincelles), sons plus calmes.
+func _start_restore(res: Dictionary) -> void:
+	_set_phase(Phase.RESTORE)
+	hud.set_objective("The shore comes back to life")
+	hud.set_arrow(NAN)
+	world.play_restoration(float(lv.r_to))
+	if sfx != null:
+		if sfx.has_method("restore"):
+			sfx.restore()
+		else:
+			sfx.finale()
+	hud.toast("SHORE RESTORED  %d%%" % int(lv.r_to), Color(0.55, 0.95, 0.75), true)
+	var tw := create_tween()
+	tw.tween_interval(5.5)
+	tw.tween_callback(func():
 		dialog.show_lines(lv.outro, func():
 			_set_phase(Phase.RESULTS)
 			var is_last: bool = int(lv.index) == GameData.LEVEL_ORDER.size() - 1

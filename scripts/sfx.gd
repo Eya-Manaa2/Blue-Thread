@@ -43,6 +43,26 @@ var s_ting: AudioStreamWAV
 var s_puff: AudioStreamWAV
 var s_gust: AudioStreamWAV
 var s_wave: AudioStreamWAV
+# --- ajouts : industrie, alarme, O2, respiration, carillons, machines, musique
+var s_hum: AudioStreamWAV
+var s_alarm: AudioStreamWAV
+var s_beep: AudioStreamWAV
+var s_breath: AudioStreamWAV
+var s_creak: AudioStreamWAV
+var s_chime: AudioStreamWAV
+var s_fail: AudioStreamWAV
+var s_hiss: AudioStreamWAV
+var s_machine: AudioStreamWAV
+var s_piano: AudioStreamWAV          # une note (Do5) jouée à différentes hauteurs
+var s_pad_major: AudioStreamWAV
+var s_pad_minor: AudioStreamWAV
+var amb_hum: AudioStreamPlayer
+var music: AudioStreamPlayer         # nappe musicale (fondus)
+var _hum_level: float = 0.3
+var _creak_timer: float = 9.0
+var _beep_cool: float = 0.0
+var level_id: String = ""
+const C5 := 523.25
 
 var _pool: Array = []
 var _pool_i: int = 0
@@ -115,13 +135,23 @@ func _set_vol(p: Node, lin: float) -> void:
 	p.set("volume_db", linear_to_db(maxf(lin, 0.0001)))
 
 
-func _play(stream: AudioStream, vol_db: float = 0.0, pitch: float = 1.0) -> void:
+func _play(stream: AudioStream, vol_db: float = 0.0, pitch: float = 1.0) -> AudioStreamPlayer:
 	var p: AudioStreamPlayer = _pool[_pool_i]
 	_pool_i = (_pool_i + 1) % _pool.size()
 	p.stream = stream
 	p.volume_db = vol_db
 	p.pitch_scale = pitch
 	p.play()
+	return p
+
+
+## Joue un son en boucle pendant `sec` secondes puis l'éteint en fondu.
+func _play_for(stream: AudioStream, vol_db: float, pitch: float, sec: float) -> void:
+	var p := _play(stream, vol_db, pitch)
+	var tw := create_tween()
+	tw.tween_interval(maxf(0.0, sec - 0.8))
+	tw.tween_property(p, "volume_db", -60.0, 0.8)
+	tw.tween_callback(p.stop)
 
 
 func _play_3d(stream: AudioStream, pos: Vector3, vol_db: float = 0.0, pitch: float = 1.0, unit: float = 8.0) -> void:
@@ -169,6 +199,18 @@ func _generate_all() -> void:
 	s_puff = _gen_puff()
 	s_gust = _gen_gust()
 	s_wave = _gen_wave()
+	s_hum = _gen_hum()
+	s_alarm = _gen_alarm()
+	s_beep = _gen_beep()
+	s_breath = _gen_breath()
+	s_creak = _gen_creak()
+	s_chime = _gen_chime()
+	s_fail = _gen_fail()
+	s_hiss = _gen_hiss()
+	s_machine = _gen_machine()
+	s_piano = _gen_piano()
+	s_pad_major = _gen_pad([261.63, 329.63, 392.0, 523.25])
+	s_pad_minor = _gen_pad([220.0, 261.63, 329.63, 440.0])
 
 
 # --- Mer : vagues qui montent et se retirent, ressac écumeux ---
@@ -515,6 +557,189 @@ func _gen_wave() -> AudioStreamWAV:
 
 
 # ============================================================
+#  AJOUTS (22/11) : sons procéduraux originaux, aucun fichier externe
+# ============================================================
+# --- Bourdonnement industriel (boucle) : 50 Hz + harmoniques + souffle ---
+func _gen_hum() -> AudioStreamWAV:
+	var rate: int = LO
+	var b := _new_buf(4.0, rate)
+	var lp: float = 0.0
+	for i in b.size():
+		var t: float = float(i) / rate
+		var w: float = rng.randf_range(-1.0, 1.0)
+		lp += (w - lp) * 0.02
+		var wob: float = 1.0 + 0.15 * sin(TAU * 0.25 * t)
+		b[i] = (sin(TAU * 50.0 * t) * 0.5 + sin(TAU * 100.0 * t) * 0.3 + sin(TAU * 150.0 * t) * 0.12) * wob + lp * 2.5
+	return _to_wav(_norm(_loop(b, 2000), 0.5), rate, true)
+
+
+# --- Alarme lointaine : deux tons ---
+func _gen_alarm() -> AudioStreamWAV:
+	var rate: int = MID
+	var b := _new_buf(1.2, rate)
+	for i in b.size():
+		var t: float = float(i) / rate
+		var f: float = 660.0 if fmod(t, 0.6) < 0.3 else 520.0
+		var env: float = minf(1.0, t * 20.0) * minf(1.0, (1.2 - t) * 8.0)
+		b[i] = (sin(TAU * f * t) + 0.3 * sin(TAU * f * 2.0 * t)) * env
+	return _to_wav(_norm(b, 0.35), rate, false)
+
+
+# --- Bip du moniteur d'oxygène ---
+func _gen_beep() -> AudioStreamWAV:
+	var rate: int = MID
+	var b := _new_buf(0.14, rate)
+	for i in b.size():
+		var t: float = float(i) / rate
+		b[i] = sin(TAU * 1320.0 * t) * minf(1.0, t * 300.0) * minf(1.0, (0.14 - t) * 60.0)
+	return _to_wav(_norm(b, 0.45), rate, false)
+
+
+# --- Respiration dans le masque : inspiration + expiration ---
+func _gen_breath() -> AudioStreamWAV:
+	var rate: int = LO
+	var b := _new_buf(2.6, rate)
+	var low: float = 0.0
+	var band: float = 0.0
+	for i in b.size():
+		var t: float = float(i) / rate
+		var w: float = rng.randf_range(-1.0, 1.0)
+		var env: float = 0.0
+		if t < 1.0:
+			env = sin(PI * t / 1.0)
+		elif t > 1.2 and t < 2.5:
+			env = 0.8 * sin(PI * (t - 1.2) / 1.3)
+		var fc: float = 700.0 if t < 1.1 else 450.0
+		var f: float = 2.0 * sin(PI * fc / rate)
+		low += f * band
+		var high: float = w - low - 0.6 * band
+		band += f * high
+		b[i] = band * env
+	return _to_wav(_norm(b, 0.5), rate, false)
+
+
+# --- Grincement de métal ---
+func _gen_creak() -> AudioStreamWAV:
+	var rate: int = MID
+	var b := _new_buf(0.9, rate)
+	var ph: float = 0.0
+	for i in b.size():
+		var t: float = float(i) / rate
+		var f: float = 180.0 + 60.0 * sin(TAU * 1.3 * t) + rng.randf_range(-12.0, 12.0)
+		ph = fposmod(ph + f / rate, 1.0)
+		var saw: float = ph * 2.0 - 1.0
+		b[i] = saw * sin(PI * t / 0.9) * (0.6 + 0.4 * sin(TAU * 23.0 * t))
+	return _to_wav(_norm(b, 0.35), rate, false)
+
+
+# --- Carillon agréable (objet utile) : Do-Mi-Sol ---
+func _gen_chime() -> AudioStreamWAV:
+	var rate: int = HI
+	var b := _new_buf(0.7, rate)
+	var notes := [[0.0, 1046.5], [0.07, 1318.5], [0.14, 1568.0]]
+	for n in notes:
+		var off: int = int(float(n[0]) * rate)
+		for i in range(off, b.size()):
+			var t: float = float(i - off) / rate
+			b[i] += (sin(TAU * float(n[1]) * t) + 0.25 * sin(TAU * float(n[1]) * 2.0 * t)) * exp(-t * 6.0)
+	return _to_wav(_norm(b, 0.45), rate, false)
+
+
+# --- Échec court (objet inutile, mauvais choix) : deux tons descendants ---
+func _gen_fail() -> AudioStreamWAV:
+	var rate: int = MID
+	var b := _new_buf(0.5, rate)
+	for i in b.size():
+		var t: float = float(i) / rate
+		var f: float = 330.0 if t < 0.18 else 247.0
+		var tt: float = t if t < 0.18 else t - 0.18
+		var env: float = minf(1.0, tt * 80.0) * exp(-tt * (9.0 if t < 0.18 else 5.0))
+		var sq: float = sign(sin(TAU * f * t)) * 0.35 + sin(TAU * f * t) * 0.65
+		b[i] = sq * env
+	return _to_wav(_norm(b, 0.5), rate, false)
+
+
+# --- Recharge O2 : sifflement de pression qui monte ---
+func _gen_hiss() -> AudioStreamWAV:
+	var rate: int = HI
+	var b := _new_buf(1.1, rate)
+	var low: float = 0.0
+	var band: float = 0.0
+	for i in b.size():
+		var t: float = float(i) / rate
+		var w: float = rng.randf_range(-1.0, 1.0)
+		var f: float = 2.0 * sin(PI * lerpf(2500.0, 6000.0, t / 1.1) / rate)
+		low += f * band
+		var high: float = w - low - 0.3 * band
+		band += f * high
+		var env: float = minf(1.0, t * 10.0) * minf(1.0, (1.1 - t) * 4.0)
+		b[i] = band * env * 0.7 + sin(TAU * lerpf(300.0, 600.0, t / 1.1) * t) * 0.15 * env
+	return _to_wav(_norm(b, 0.5), rate, false)
+
+
+# --- Machine (étape de recyclage) : clac + vrombissement ---
+func _gen_machine() -> AudioStreamWAV:
+	var rate: int = MID
+	var b := _new_buf(0.9, rate)
+	var lp: float = 0.0
+	var ph: float = 0.0
+	for i in b.size():
+		var t: float = float(i) / rate
+		var w: float = rng.randf_range(-1.0, 1.0)
+		lp += (w - lp) * 0.2
+		var clank: float = lp * exp(-t * 25.0) * 1.5
+		var f: float = lerpf(90.0, 220.0, minf(1.0, t / 0.6))
+		ph = fposmod(ph + f / rate, 1.0)
+		var whir: float = (ph * 2.0 - 1.0) * 0.35 * smoothstep(0.05, 0.25, t) * minf(1.0, (0.9 - t) * 5.0)
+		b[i] = clank + whir
+	return _to_wav(_norm(b, 0.55), rate, false)
+
+
+# --- Note de piano douce (Do5), rejouée à d'autres hauteurs ---
+func _gen_piano() -> AudioStreamWAV:
+	var rate: int = HI
+	var b := _new_buf(2.2, rate)
+	for i in b.size():
+		var t: float = float(i) / rate
+		var env: float = minf(1.0, t * 200.0) * exp(-t * 2.2)
+		b[i] = (sin(TAU * C5 * t) + 0.45 * sin(TAU * C5 * 2.0 * t) * exp(-t * 3.0) + 0.18 * sin(TAU * C5 * 3.0 * t) * exp(-t * 5.0)) * env
+	return _to_wav(_norm(b, 0.5), rate, false)
+
+
+# --- Nappe d'accord (musique d'ambiance), attaque et relâche lentes ---
+func _gen_pad(freqs: Array) -> AudioStreamWAV:
+	var rate: int = LO
+	var dur: float = 5.0
+	var b := _new_buf(dur, rate)
+	for i in b.size():
+		var t: float = float(i) / rate
+		var env: float = smoothstep(0.0, 1.5, t) * smoothstep(dur, dur - 1.8, t)
+		var v: float = 0.0
+		for f in freqs:
+			var ff: float = float(f)
+			v += sin(TAU * ff * t + 0.4 * sin(TAU * 0.3 * t)) + 0.2 * sin(TAU * ff * 2.003 * t)
+		b[i] = v * env
+	return _to_wav(_norm(b, 0.4), rate, false)
+
+
+func _note(semitones_from_c5: float, vol_db: float, delay: float) -> void:
+	var pitch: float = pow(2.0, semitones_from_c5 / 12.0)
+	if delay <= 0.0:
+		_play(s_piano, vol_db, pitch)
+	else:
+		_later(delay, func(): _play(s_piano, vol_db, pitch))
+
+
+func _pad(major: bool, vol_db: float) -> void:
+	if music == null:
+		music = AudioStreamPlayer.new()
+		add_child(music)
+	music.stream = s_pad_major if major else s_pad_minor
+	music.volume_db = vol_db
+	music.play()
+
+
+# ============================================================
 #  AMBIANCE QUI ÉVOLUE AVEC LA VILLE
 # ============================================================
 func start_ambience() -> void:
@@ -522,6 +747,8 @@ func start_ambience() -> void:
 	amb_flies = _make_loop_player(s_flies)
 	amb_leaves = _make_loop_player(s_leaves)
 	amb_cicadas = _make_loop_player(s_cicadas)
+	amb_hum = _make_loop_player(s_hum)
+	_set_vol(amb_hum, 0.0)
 	_set_vol(amb_leaves, 0.0)
 	_set_vol(amb_cicadas, 0.0)
 	if world != null:
@@ -553,6 +780,18 @@ func update(r: float, ch: float, ppos: Vector3, delta: float) -> void:
 	_set_vol(amb_flies, 0.25 * pow(1.0 - r, 2.0))
 	_set_vol(amb_leaves, 0.45 * _smooth(0.25, 0.7, r))
 	_set_vol(amb_cicadas, 0.28 * _smooth(0.45, 0.85, r))
+	# industrie : forte à Gabès, plus douce à Skhira, presque absente à Sidi Mansour
+	if amb_hum != null:
+		var hum_target: float = _hum_level * (1.0 - 0.85 * r)
+		var cur: float = db_to_linear(amb_hum.volume_db)
+		_set_vol(amb_hum, lerpf(cur, hum_target, 1.0 - exp(-2.0 * delta)))
+	_beep_cool = maxf(0.0, _beep_cool - delta)
+	if level_id == "gabes" and r < 0.6:
+		_creak_timer -= delta
+		if _creak_timer <= 0.0:
+			_creak_timer = rng.randf_range(9.0, 16.0)
+			var cpos: Vector3 = ppos + Vector3(rng.randf_range(-20.0, 20.0), 2.0, rng.randf_range(10.0, 25.0))
+			_play_3d(s_creak, cpos, -6.0, rng.randf_range(0.8, 1.1), 10.0)
 	if amb_ocean != null:
 		amb_ocean.volume_db = linear_to_db(0.45 + 0.55 * r) + 6.0
 
@@ -645,3 +884,125 @@ func finale() -> void:
 	for i in 5:
 		var gpos := Vector3(rng.randf_range(-15.0, 15.0), 12.0, -85.0 + rng.randf_range(-10.0, 5.0))
 		_later(0.4 + i * 0.5, func(): _play_3d(s_gull, gpos, 4.0, rng.randf_range(0.9, 1.15), 25.0))
+
+
+# ============================================================
+#  BRUITAGES AJOUTÉS (22/11)
+# ============================================================
+## Ambiance propre à chaque rivage (appelé au chargement du niveau)
+func set_level(id: String) -> void:
+	level_id = id
+	match id:
+		"gabes":
+			_hum_level = 0.38
+		"skhira":
+			_hum_level = 0.2
+		"sidi_mansour":
+			_hum_level = 0.07
+		_:
+			_hum_level = 0.0
+
+
+## Objet utile ramassé : carillon agréable
+func chime() -> void:
+	_play(s_chime, -6.0, rng.randf_range(0.98, 1.04))
+	if level_id == "skhira":
+		_play(s_paper, -14.0, 0.7)       # tissu manipulé
+	else:
+		_play(s_plastic, -15.0, rng.randf_range(1.2, 1.5))
+
+
+## Échec : objet inutile, mauvais bac
+func fail() -> void:
+	_play(s_fail, -5.0)
+
+
+## Bip d'alerte d'oxygène (limité à un bip par seconde)
+func low_air_beep() -> void:
+	if _beep_cool > 0.0:
+		return
+	_beep_cool = 1.0
+	_play(s_beep, -8.0)
+
+
+## Recharge O2 : sifflement de pression puis respiration
+func refill() -> void:
+	_play(s_hiss, -4.0)
+	_later(0.9, func(): _play(s_breath, -10.0, 1.1))
+
+
+## Étape de recyclage réussie : transformation mécanique
+func machine() -> void:
+	_play(s_machine, -5.0, rng.randf_range(0.95, 1.05))
+
+
+## Mort : respiration qui ralentit, accord mineur, notes lentes
+func death() -> void:
+	_play(s_breath, -6.0, 0.85)
+	_later(2.4, func(): _play(s_breath, -10.0, 0.7))
+	_pad(false, -12.0)
+	_note(-3.0, -10.0, 1.2)      # La
+	_note(-5.0, -11.0, 2.4)      # Sol
+	_note(-9.0, -12.0, 3.6)      # Mi
+
+
+## Rivage terminé : courte phrase pleine d'espoir
+func hopeful() -> void:
+	_pad(true, -12.0)
+	_note(-12.0, -10.0, 0.0)
+	_note(-8.0, -10.0, 0.25)
+	_note(-5.0, -10.0, 0.5)
+	_note(0.0, -9.0, 0.8)
+	_note(4.0, -11.0, 1.2)
+
+
+## Restauration de l'océan : nappe qui monte, vagues, oiseaux
+func restore() -> void:
+	_pad(true, -10.0)
+	_play(s_wave, -8.0, 1.0)
+	_later(1.5, func(): _play(s_wave, -10.0, 0.9))
+	milestone()
+
+
+## Petit bateau sur la carte : moteur doux + vagues
+func boat() -> void:
+	_play(s_wave, -12.0, 1.1)
+	_play_for(s_hum, -20.0, 2.2, 5.0)
+
+
+## Sons de l'intro cinématique, plan par plan
+func intro_cue(kind: String) -> void:
+	match kind:
+		"industrial":
+			_play_for(s_hum, -8.0, 1.0, 7.0)
+			_play(s_gust, -8.0, 0.8)
+			_play(s_wave, -10.0, 0.7)
+			_later(2.5, func(): _play(s_alarm, -16.0))
+		"boy":
+			for k in 4:
+				_later(k * 0.45, func(): _play(s_steps[k % s_steps.size()], -10.0, 0.8))
+			_later(0.3, func(): _play(s_breath, -6.0))
+			_later(2.2, func(): _play(s_beep, -10.0))
+			_later(2.6, func(): _play(s_beep, -10.0))
+			_later(3.4, func(): _play(s_creak, -14.0, 0.8))
+		"room":
+			_play(s_gust, -18.0, 1.4)
+			_note(-5.0, -13.0, 0.2)
+			_note(-1.0, -13.0, 1.0)
+			_note(2.0, -14.0, 1.8)
+			_note(0.0, -14.0, 2.8)
+		"flashback":
+			_play(s_wave, -10.0, 1.0)
+			_note(4.0, -12.0, 0.1)
+			_note(7.0, -13.0, 0.9)
+			_later(0.6, func(): _play(s_chirps[0], -12.0, 1.1))
+		"promise":
+			_pad(true, -12.0)
+			_note(-12.0, -11.0, 0.3)
+			_note(-5.0, -11.0, 0.9)
+			_note(0.0, -10.0, 1.5)
+			_note(4.0, -10.0, 2.2)
+		"title":
+			_note(7.0, -11.0, 0.1)
+			_note(12.0, -12.0, 0.6)
+			_play(s_wave, -14.0, 1.2)

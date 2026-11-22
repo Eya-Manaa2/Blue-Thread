@@ -1,9 +1,10 @@
 extends Node3D
 ## ============================================================
 ##  Main — BLUE THREAD: THE LAST BLUE (point d'entrée : scenes/Main.tscn)
-##  Menu -> profil (nom + avatar) -> intro (histoire illustrée) -> carte de
-##  chapitre -> Gabès -> carte -> Skhira -> carte -> Sidi Mansour -> carte ->
-##  fin avec Mima -> statistiques / rejouer.  CONTINUE reprend la sauvegarde.
+##  Menu -> intro cinématique (~36 s) -> profil (nom + avatar) -> carte de
+##  chapitre -> Gabès -> carte marine (bateau) + carte -> Skhira -> carte marine
+##  + carte -> Sidi Mansour -> carte marine + épilogue -> fin avec Mima.
+##  L'intro ne rejoue jamais entre les niveaux. CONTINUE reprend la sauvegarde.
 ##
 ##  Contrats d'équipe conservés :
 ##   A -> C : GameState.sort_completed(item_id, bin, ms) -> OnlineService.submit_sort_v2(+ niveau)
@@ -22,6 +23,7 @@ const SfxScript := preload("res://scripts/sfx.gd")
 const NetGuardScript := preload("res://scripts/ui/NetGuard.gd")
 const ProfileScript := preload("res://scripts/ui/ProfileSetup.gd")
 const BoyScript := preload("res://scripts/world/Boy.gd")
+const SeaMapScript := preload("res://scripts/ui/SeaMap.gd")
 const CHAPTER_TIME := 3.6
 
 var current: Node = null
@@ -96,8 +98,12 @@ func _switch(n: Node) -> void:
 
 func _show_menu() -> void:
 	var m := MenuScript.new()
-	m.play_story.connect(_show_profile)
+	m.play_story.connect(_start_story)
 	m.continue_game.connect(_continue)
+	m.jury_ending.connect(func():
+		if GameState.portrait == null:
+			await _make_portrait()
+		_show_ending())
 	m.play_level.connect(_start_level_direct)
 	m.open_preview.connect(_show_preview)
 	_switch(m)
@@ -113,17 +119,16 @@ func _show_profile() -> void:
 func _on_profile_confirmed(player_name: String, avatar: int) -> void:
 	GameState.set_profile(player_name, avatar)
 	await _make_portrait()
-	_start_story()
+	_chapter_then("gabes")
 
 
+## START ADVENTURE : l'histoire d'abord (intro), puis le choix du nom et de l'avatar.
+## Passer l'intro mène aussi au choix de l'avatar, jamais directement au niveau.
 func _start_story() -> void:
-	if not GameState.has_profile():
-		_show_profile()
-		return
 	GameState.new_game()
 	var intro := IntroScript.new()
 	intro.sfx = sfx
-	intro.finished.connect(func(): _chapter_then("gabes"))
+	intro.finished.connect(_show_profile)
 	_switch(intro)
 
 
@@ -276,10 +281,21 @@ func _on_level_finished(_res: Dictionary) -> void:
 func _next_level(level_id: String) -> void:
 	var i: int = GameData.LEVEL_ORDER.find(level_id)
 	GameState.save_game()
-	if i + 1 < GameData.LEVEL_ORDER.size():
-		_chapter_then(GameData.LEVEL_ORDER[i + 1])
-	else:
-		_chapter_then("ending")
+	var nxt: String = GameData.LEVEL_ORDER[i + 1] if i + 1 < GameData.LEVEL_ORDER.size() else "ending"
+	_sea_map_then(level_id, nxt)
+
+
+## Carte marine entre deux rivages : le petit bateau traverse la mer, l'océan
+## s'éclaircit derrière lui ; le score du rivage décide la distance parcourue.
+func _sea_map_then(from_id: String, to_id: String) -> void:
+	var res: Dictionary = GameState.stats.get("per_level", {}).get(from_id, {})
+	var m := SeaMapScript.new()
+	m.from_id = from_id
+	m.to_id = to_id
+	m.level_score = int(res.get("score", 0))
+	m.sfx = sfx
+	m.finished.connect(func(): _chapter_then(to_id))
+	_switch(m)
 
 
 func _replay(level_id: String) -> void:
@@ -290,7 +306,7 @@ func _replay(level_id: String) -> void:
 func _show_ending() -> void:
 	var e := EndingScript.new()
 	e.sfx = sfx
-	e.play_again.connect(_show_profile)
+	e.play_again.connect(_start_story)
 	e.to_menu.connect(_show_menu)
 	e.to_preview.connect(_show_preview)
 	_switch(e)

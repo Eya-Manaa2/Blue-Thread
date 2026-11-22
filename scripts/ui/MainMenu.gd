@@ -7,6 +7,7 @@ extends Control
 
 signal play_story
 signal continue_game
+signal jury_ending
 signal play_level(level_id: String)
 signal open_preview
 
@@ -80,7 +81,7 @@ void fragment() {
 		b_cont.pressed.connect(func(): continue_game.emit())
 		col.add_child(b_cont)
 		first = b_cont
-	var b_play := UiKit.button("PLAY THE STORY" if first == null else "NEW STORY", UiKit.TEAL if first == null else Color(0.35, 0.55, 0.9), 26 if first == null else 22, 360)
+	var b_play := UiKit.button("START ADVENTURE" if first == null else "NEW ADVENTURE", UiKit.TEAL if first == null else Color(0.35, 0.55, 0.9), 26 if first == null else 22, 360)
 	b_play.pressed.connect(func(): play_story.emit())
 	col.add_child(b_play)
 	if first == null:
@@ -122,3 +123,5 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
 		if e.physical_keycode == KEY_J:
 			_toggle_demo()
+		elif e.physical_keycode == KEY_F3 and GameState.demo_mode:
+			jury_ending.emit()     # mode jury uniquement : voir directement la fin

@@ -209,11 +209,7 @@ def logo():
     sub = 'T H E   L A S T   B L U E'
     d.text((w // 2 + 2, 372 + 3), sub, font=f2, fill=(0, 10, 25, 170), anchor='mm')
     d.text((w // 2, 372), sub, font=f2, fill=(236, 246, 255, 255), anchor='mm')
-    try:
-        fa = ImageFont.truetype(F_AR, 50, layout_engine=ImageFont.Layout.RAQM)
-        d.text((w // 2, 450), 'الخيط الأزرق', font=fa, fill=(140, 214, 255, 235), anchor='mm', direction='rtl', language='ar')
-    except Exception as e:
-        print('arabic skipped', e)
+    # (sous-titre arabe retiré à la demande de l'équipe : seul le titre anglais reste)
     return im
 
 
