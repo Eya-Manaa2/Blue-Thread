@@ -6,7 +6,7 @@ extends Node3D
 ##  Plan 3 : le petit-fils (l'avatar choisi) la rejoint, retire son masque ;
 ##           ils se tournent FACE À FACE — « I kept my promise, Mima. »
 ##  Plan 4 : Mima sourit — « You didn't just bring back the sea... you brought
-##           back hope. » — puis ils se serrent dans les bras (câlin).
+##           back hope. » (face à face, sans câlin).
 ##  Plan 5 : côte à côte, main dans la main, ils regardent l'océan ;
 ##           la caméra passe derrière eux vers la mer (vagues, oiseaux) ;
 ##           « BLUE THREAD — THE LAST BLUE » / « Every small action can begin a brighter future. »
@@ -204,7 +204,7 @@ func _shot4() -> void:
 		sfx.hopeful()
 	var tw := create_tween()
 	tw.tween_interval(1.6)
-	tw.tween_callback(func(): dialog.show_lines([GameData.ENDING[2]], _hug))
+	tw.tween_callback(func(): dialog.show_lines([GameData.ENDING[2]], _shot5))
 
 
 func _hug() -> void:
@@ -236,8 +236,8 @@ func _boy_arms(fwd: float, inward: float, dur: float) -> void:
 
 # ---- Plan 5 : côte à côte, main dans la main, ils regardent l'océan
 func _shot5() -> void:
-	grandma.hug(false)
-	_boy_arms(0.0, 0.0, 0.6)
+	# (22/11) pas de câlin : après leur échange face à face, ils se tournent
+	# ensemble vers l'océan, main dans la main
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(grandma, "rotation:y", 0.0, 1.0).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(boy.visual, "rotation:y", 0.0, 1.0).set_trans(Tween.TRANS_SINE)

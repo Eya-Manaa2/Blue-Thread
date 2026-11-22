@@ -73,6 +73,7 @@ var _pool: Array = []
 var _pool_i: int = 0
 var _bird_timer: float = 3.0
 var _birds_on: bool = true
+var _wave_timer: float = 4.0
 ## Petite musique d'ambiance douce (arpèges de piano, ses propres lecteurs
 ## pour ne jamais couper les bruitages).
 var music_on: bool = false           # (22/11) musique supprimée
@@ -96,7 +97,7 @@ func _ready() -> void:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_pool.append(p)
-	for i in 4:
+	for i in 6:
 		var mp := AudioStreamPlayer.new()
 		add_child(mp)
 		_mus_pool.append(mp)
@@ -853,30 +854,35 @@ func _gen_pad(freqs: Array) -> AudioStreamWAV:
 
 ## Un oiseau chante quelque part autour du joueur
 func _bird_song(r: float, around: Vector3) -> void:
-	var pool: Array = [s_chirps]
-	if r > 0.2:
-		pool.append(s_tit)
-	if r > 0.35:
-		pool.append(s_blackbird)
-		pool.append(s_dove)
-	if r > 0.55:
+	# (22/11) oiseaux bien audibles partout (avant : trop rares et trop
+	# lointains, le jeu paraissait muet). Plus d'espèces quand la côte revit.
+	var pool: Array = [s_chirps, s_tit, s_dove, s_blackbird]
+	if r > 0.3:
 		pool.append(s_canary)
-		pool.append(s_nightingale)
 		pool.append(s_blackbird)
+	if r > 0.55:
+		pool.append(s_nightingale)
+		pool.append(s_canary)
 	var set_a: Array = pool[rng.randi_range(0, pool.size() - 1)]
 	var snd: AudioStream = set_a[rng.randi_range(0, set_a.size() - 1)]
-	var vol: float = lerpf(-17.0, -11.0, r)
+	var vol: float = lerpf(-9.0, -5.0, r) - rng.randf_range(0.0, 5.0)   # proches ou plus lointains
 	if set_a == s_dove:
-		vol -= 3.0
+		vol -= 2.0
 	var pitch: float = rng.randf_range(0.94, 1.06)
-	var cam := get_viewport().get_camera_3d()
-	if cam == null:
-		_play(snd, vol - 3.0, pitch)        # écrans 2D (menu, intro, carte)
+	_play_bird(snd, vol, pitch)
+
+
+## Lecteurs dédiés aux oiseaux (ne coupent jamais les bruitages du jeu)
+func _play_bird(snd: AudioStream, vol: float, pitch: float) -> void:
+	if _mus_pool.is_empty():
+		_play(snd, vol, pitch)
 		return
-	var c: Vector3 = cam.global_position if around == Vector3.ZERO else around
-	var a: float = rng.randf_range(0.0, TAU)
-	var d: float = rng.randf_range(5.0, 13.0)
-	_play_3d(snd, c + Vector3(cos(a) * d, rng.randf_range(3.0, 7.0), sin(a) * d), vol, pitch, 7.0)
+	var p: AudioStreamPlayer = _mus_pool[_mus_pi]
+	_mus_pi = (_mus_pi + 1) % _mus_pool.size()
+	p.stream = snd
+	p.volume_db = vol
+	p.pitch_scale = pitch
+	p.play()
 
 
 ## Petit chœur d'oiseaux (fin de rivage, restauration, fin du jeu)
@@ -886,7 +892,7 @@ func birds_chorus(n: int = 4, vol: float = -12.0) -> void:
 		var set_a: Array = sets[i % sets.size()]
 		var snd: AudioStream = set_a[rng.randi_range(0, set_a.size() - 1)]
 		var p: float = rng.randf_range(0.95, 1.05)
-		_later(0.15 + i * rng.randf_range(0.45, 0.8), func(): _play(snd, vol - rng.randf_range(0.0, 4.0), p))
+		_later(0.15 + i * rng.randf_range(0.45, 0.8), func(): _play_bird(snd, vol - rng.randf_range(0.0, 3.0), p))
 
 
 func _music_tick(_r: float, _delta: float) -> void:
@@ -966,8 +972,13 @@ func update(r: float, ch: float, ppos: Vector3, delta: float) -> void:
 	if _birds_on:
 		_bird_timer -= delta
 		if _bird_timer <= 0.0:
-			_bird_timer = lerpf(11.0, 2.4, r) * rng.randf_range(0.7, 1.4)
+			_bird_timer = lerpf(3.6, 1.3, r) * rng.randf_range(0.6, 1.4)
 			_bird_song(r, ppos)
+		# petites vagues sourdes sur le rivage, de temps en temps
+		_wave_timer -= delta
+		if _wave_timer <= 0.0:
+			_wave_timer = rng.randf_range(6.0, 10.0)
+			_play_bird(s_wave, -15.0, rng.randf_range(0.8, 1.0))
 	# Les mouettes au-dessus de la mer
 	if r > 0.55:
 		_gull_timer -= delta
@@ -1000,12 +1011,12 @@ func good(combo: int, shape: String) -> void:
 			s = s_paper
 		"peel", "dates":
 			s = s_organic
-	_play(s, -5.0, rng.randf_range(0.92, 1.08))
-	_play(s_ting, -14.0, 1.0 + float(mini(combo, 10)) * 0.04)
+	_play(s, -2.0, rng.randf_range(0.92, 1.08))
+	_play(s_ting, -9.0, 1.0 + float(mini(combo, 10)) * 0.04)
 
 
 func bad() -> void:
-	_play(s_bonk, -8.0)
+	_play(s_bonk, -4.0)
 
 
 func pop() -> void:
@@ -1013,7 +1024,7 @@ func pop() -> void:
 
 
 func step() -> void:
-	_play(s_steps[rng.randi_range(0, s_steps.size() - 1)], -16.0, rng.randf_range(0.85, 1.15))
+	_play(s_steps[rng.randi_range(0, s_steps.size() - 1)], -11.0, rng.randf_range(0.85, 1.15))
 
 
 func wind() -> void:
@@ -1068,7 +1079,7 @@ func set_level(id: String) -> void:
 
 ## Objet utile ramassé : carillon agréable
 func chime() -> void:
-	_play(s_chime, -6.0, rng.randf_range(0.98, 1.04))
+	_play(s_chime, -3.0, rng.randf_range(0.98, 1.04))
 	if level_id == "skhira":
 		_play(s_paper, -14.0, 0.7)       # tissu manipulé
 	else:
@@ -1077,7 +1088,7 @@ func chime() -> void:
 
 ## Échec : objet inutile, mauvais bac
 func fail() -> void:
-	_play(s_fail, -9.0)
+	_play(s_fail, -5.0)
 
 
 ## Bip d'alerte d'oxygène (limité à un bip par seconde)
@@ -1085,7 +1096,7 @@ func low_air_beep() -> void:
 	if _beep_cool > 0.0:
 		return
 	_beep_cool = 1.0
-	_play(s_beep, -14.0)
+	_play(s_beep, -10.0)
 
 
 ## Recharge O2 : sifflement de pression puis respiration
@@ -1109,12 +1120,12 @@ func death() -> void:
 
 ## Rivage terminé : courte phrase pleine d'espoir
 func hopeful() -> void:
-	birds_chorus(4, -12.0)
+	birds_chorus(4, -6.0)
 
 
 ## Restauration de l'océan : nappe qui monte, vagues, oiseaux
 func restore() -> void:
-	birds_chorus(5, -11.0)
+	birds_chorus(5, -5.0)
 	_play(s_wave, -8.0, 1.0)
 	_later(1.5, func(): _play(s_wave, -10.0, 0.9))
 	milestone()
@@ -1130,28 +1141,28 @@ func boat() -> void:
 func intro_cue(kind: String) -> void:
 	match kind:
 		"industrial":
-			_play_for(s_hum, -20.0, 1.0, 7.0)
-			_play(s_wave, -14.0, 0.7)
+			_play_for(s_hum, -14.0, 1.0, 7.0)
+			_play(s_wave, -9.0, 0.7)
 		"boy":
 			for k in 4:
-				_later(k * 0.45, func(): _play(s_steps[k % s_steps.size()], -10.0, 0.8))
+				_later(k * 0.45, func(): _play(s_steps[k % s_steps.size()], -6.0, 0.8))
 			_later(0.3, func(): _play(s_breath, -15.0))
 			_later(2.2, func(): _play(s_beep, -10.0))
 			_later(2.6, func(): _play(s_beep, -10.0))
 			_later(3.4, func(): _play(s_creak, -14.0, 0.8))
 		"room":
-			_later(0.8, func(): _play(s_chirps[1], -22.0, 0.95))   # un moineau, loin, derrière la fenêtre
+			_later(0.8, func(): _play(s_chirps[1], -12.0, 0.95))   # un moineau, loin, derrière la fenêtre
 		"flashback":
 			_play(s_wave, -10.0, 1.0)
-			_play(s_blackbird[0], -13.0)
-			_later(1.2, func(): _play(s_canary[0], -15.0))
-			_later(1.6, func(): _play(s_gull, -20.0))
+			_play(s_blackbird[0], -6.0)
+			_later(1.2, func(): _play(s_canary[0], -8.0))
+			_later(1.6, func(): _play(s_gull, -12.0))
 			_later(0.6, func(): _play(s_chirps[0], -12.0, 1.1))
 		"promise":
-			_later(1.0, func(): _play(s_blackbird[1], -16.0))
+			_later(1.0, func(): _play(s_blackbird[1], -8.0))
 		"mission":
-			_play(s_wave, -16.0, 0.9)
-			_later(2.0, func(): _play(s_tit[0], -17.0))
+			_play(s_wave, -10.0, 0.9)
+			_later(2.0, func(): _play(s_tit[0], -9.0))
 		"title":
-			birds_chorus(3, -14.0)
+			birds_chorus(3, -8.0)
 			_play(s_wave, -14.0, 1.2)

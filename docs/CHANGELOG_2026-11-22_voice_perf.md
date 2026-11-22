@@ -60,3 +60,9 @@
 - Plus aucune étiquette sous les avatars (garçon / fille, couleur de peau, cheveux) : seulement les personnages.
 - **Nouvel avatar au milieu** : garçon en **dengri** tunisien (veste et pantalon de travail bleu indigo, chemise claire) avec la **chéchia rouge** (feutre rouge, bord foncé, gland noir). Ordre affiché : 0, 1, 2, **6**, 3, 4, 5 (`GameData.AVATAR_ORDER`) ; les identifiants existants ne changent pas (sauvegardes compatibles).
 - Sélection : clic / toucher, flèches gauche-droite ou touches 1 à 7 dans l'ordre affiché. Vérifié dans Godot (aperçu + en jeu à Gabès).
+
+## 22/11 (14h) — sons audibles, pas de câlin
+- Les oiseaux étaient trop rares (une fois toutes les ~11 s) et trop bas/lointains (-17 dB en 3D, à 5-13 m) : le jeu paraissait muet. Maintenant : un chant toutes les 1,3-3,6 s, -5 à -14 dB, sur des lecteurs dédiés (6) qui ne coupent pas les bruitages ; moineau, mésange, tourterelle et merle partout, serin et rossignol en plus quand la côte revit. Petites vagues sourdes toutes les 6-10 s.
+- Bruitages remontés (ramassage, bon tri, échec, mauvais bac, bip d'oxygène, pas) et sons de l'intro remontés.
+- Vérifié dans Godot (journal de test temporaire) : les chants se déclenchent et sont bien lus au menu et pendant la fin.
+- Fin : plus de câlin ; après l'échange face à face, ils se tournent ensemble vers l'océan, main dans la main.
