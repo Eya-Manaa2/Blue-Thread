@@ -48,3 +48,10 @@
 - Piano d'ambiance, nappes et petites mélodies (intro, fin de rivage, mort, fin du jeu) **supprimés**.
 - À la place : chants d'oiseaux synthétisés et variés — moineau, mésange (« ti-tu »), merle (phrase flûtée), serin/chardonneret (trille), rossignol (sifflets + trille), tourterelle (roucoulement doux). Rares et loin sur une côte polluée, plus nombreux et plus variés quand elle revit ; placés autour du joueur en 3D, volume bas.
 - Moments forts (fin de rivage, restauration, fin) : petit chœur d'oiseaux + vagues sourdes. Mort : seulement la respiration, les oiseaux se taisent quelques secondes.
+
+## 22/11 (13h30) — écran du nom bloquant sur téléphone
+- Cause : dans un jeu Godot web, le navigateur du téléphone n'ouvre pas le clavier (option « clavier virtuel expérimental » désactivée dans l'export), et START exigeait un nom valide -> joueur bloqué.
+- Corrigé : **clavier à l'écran intégré** (A-Z, ' et -, espace, effacer, OK) qui s'ouvre quand on touche le champ du nom sur un écran tactile ; majuscule automatique au début des mots.
+- Le nom devient **facultatif** : champ vide -> « Keeper ». Un avatar est présélectionné, START est utilisable tout de suite.
+- Le champ du nom commence **toujours vide** (avant, le nom du joueur précédent enregistré sur l'appareil, ex. « Nour », restait écrit).
+- Testé dans Godot (clavier forcé pour le test) : saisie, effacement, OK, START avec nom vide -> « KEEPER: KEEPER » dans le HUD.

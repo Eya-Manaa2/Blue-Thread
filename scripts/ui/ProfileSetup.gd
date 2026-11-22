@@ -6,7 +6,11 @@ extends Control
 ##  - Six avatars 3D (même équipement, même squelette, même contrôleur) :
 ##    garçon peau foncée, garçon peau claire, fille rousse, fille blonde,
 ##    fille avec foulard, fille aux cheveux bouclés.
-##  - START n'est actif qu'avec un nom valide ET un avatar choisi.
+##  - Le nom est FACULTATIF (vide -> « Keeper ») : on ne peut jamais rester
+##    bloqué ici. Le champ commence toujours vide.
+##  - Téléphones / tablettes : le navigateur n'ouvre pas le clavier du
+##    téléphone dans un jeu Godot web -> clavier à l'écran intégré (A-Z,
+##    espace, effacer, OK) qui s'ouvre quand on touche le champ du nom.
 ## confirmed(name, avatar) : Main enregistre le profil et génère le portrait.
 
 signal confirmed(player_name: String, avatar: int)
@@ -22,6 +26,9 @@ var _cards: Array = []          # [{panel, vp, boy, cam, style_n, style_s}]
 var _selected: int = -1
 var _t: float = 0.0
 var _busy: bool = false
+var _touch: bool = false
+var _kb: Control = null
+const DEFAULT_NAME := "Keeper"
 
 
 func _ready() -> void:
@@ -52,7 +59,8 @@ func _ready() -> void:
 	q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(q)
 	_name_edit = LineEdit.new()
-	_name_edit.placeholder_text = "Your name"
+	_touch = DisplayServer.is_touchscreen_available() or OS.has_feature("web_android") or OS.has_feature("web_ios") or OS.has_feature("mobile")
+	_name_edit.placeholder_text = "Tap to type your name" if _touch else "Your name (optional)"
 	_name_edit.max_length = 24
 	_name_edit.custom_minimum_size = Vector2(440, 54)
 	_name_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -65,6 +73,11 @@ func _ready() -> void:
 	_name_edit.text_changed.connect(func(_t2: String): _refresh())
 	_name_edit.text_submitted.connect(func(_t2: String): _try_start())
 	col.add_child(_name_edit)
+	if _touch:
+		_name_edit.virtual_keyboard_enabled = false
+		_name_edit.gui_input.connect(func(e: InputEvent):
+			if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
+				_show_kb())
 	_error = UiKit.label(" ", 16, UiKit.BAD, "bold")
 	_error.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(_error)
@@ -88,13 +101,14 @@ func _ready() -> void:
 	_start.pressed.connect(_try_start)
 	btns.add_child(_start)
 
-	# profil déjà enregistré : on le propose
-	if GameState.player_name != "":
-		_name_edit.text = GameState.player_name
-	if GameState.avatar_id >= 0:
-		_select(GameState.avatar_id)
+	# Nouveau joueur : champ du nom TOUJOURS vide (avant, le nom du joueur
+	# précédent — ex. « Nour » — restait écrit). L'avatar est présélectionné
+	# pour que START soit tout de suite utilisable.
+	_name_edit.text = ""
+	_select(GameState.avatar_id if GameState.avatar_id >= 0 else 0)
 	_refresh()
-	_name_edit.grab_focus.call_deferred()
+	if not _touch:
+		_name_edit.grab_focus.call_deferred()
 
 
 func _make_card(id: int) -> Control:
@@ -210,24 +224,27 @@ func _select(id: int) -> void:
 
 func _refresh() -> void:
 	var raw: String = _name_edit.text
+	var empty: bool = raw.strip_edges() == ""
 	var res: Dictionary = GameState.validate_name(raw)
-	if raw.strip_edges() == "":
+	if empty:
 		_error.text = " "
 	elif not bool(res.ok):
 		_error.text = String(res.error)
-	elif _selected < 0:
-		_error.text = " "
 	else:
 		_error.text = " "
-	_start.disabled = not bool(res.ok) or _selected < 0 or _busy
+	_start.disabled = (not empty and not bool(res.ok)) or _selected < 0 or _busy
 	_start.modulate.a = 1.0 if not _start.disabled else 0.45
 
 
 func _try_start() -> void:
-	var res: Dictionary = GameState.validate_name(_name_edit.text)
+	var raw: String = _name_edit.text
+	if raw.strip_edges() == "":
+		raw = DEFAULT_NAME          # nom facultatif : jamais bloqué
+	var res: Dictionary = GameState.validate_name(raw)
 	if not bool(res.ok):
-		_error.text = String(res.error) if _name_edit.text.strip_edges() != "" else "Please enter your name."
+		_error.text = String(res.error)
 		return
+	_hide_kb()
 	if _selected < 0:
 		_error.text = "Choose one of the six keepers."
 		UiKit.set_label_color(_error, Color(1.0, 0.82, 0.45))
@@ -244,3 +261,73 @@ func _process(delta: float) -> void:
 	if _selected >= 0 and not _busy:
 		var boy: Node3D = _cards[_selected].boy
 		boy.rotation.y = sin(_t * 0.9) * 0.6
+
+
+# ------------------------------------------------------------ clavier à l'écran
+func _show_kb() -> void:
+	if _kb != null:
+		_kb.visible = true
+		return
+	_kb = PanelContainer.new()
+	_kb.add_theme_stylebox_override("panel", UiKit.style(Color(0.02, 0.05, 0.08, 0.97), 18, Color(0.4, 0.85, 1.0, 0.5), 2, false))
+	_kb.anchor_left = 0.0
+	_kb.anchor_right = 1.0
+	_kb.anchor_top = 1.0
+	_kb.anchor_bottom = 1.0
+	_kb.offset_top = -330.0
+	_kb.offset_left = 12.0
+	_kb.offset_right = -12.0
+	_kb.offset_bottom = -8.0
+	add_child(_kb)
+	var v := UiKit.vbox(8)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	_kb.add_child(v)
+	for row in ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM'-"]:
+		var h := UiKit.hbox(8)
+		h.alignment = BoxContainer.ALIGNMENT_CENTER
+		v.add_child(h)
+		for ch in row:
+			h.add_child(_kb_key(ch, ch, 96))
+	var last := UiKit.hbox(8)
+	last.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(last)
+	last.add_child(_kb_key("DELETE", "<", 200))
+	last.add_child(_kb_key("SPACE", " ", 360))
+	last.add_child(_kb_key("OK", "OK", 220))
+
+
+func _kb_key(label: String, value: String, w: int) -> Button:
+	var b := UiKit.button(label, UiKit.TEAL if value == "OK" else Color(0.25, 0.4, 0.5), 26, w)
+	b.custom_minimum_size = Vector2(w, 64)
+	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(_kb_press.bind(value))
+	return b
+
+
+func _kb_press(value: String) -> void:
+	var t: String = _name_edit.text
+	match value:
+		"OK":
+			_hide_kb()
+			return
+		"<":
+			t = t.substr(0, maxi(0, t.length() - 1))
+		_:
+			if t.length() >= 20:
+				return
+			var c: String = value
+			# Majuscule au début de chaque mot, minuscules ensuite
+			if t == "" or t.ends_with(" ") or t.ends_with("-"):
+				c = c.to_upper()
+			else:
+				c = c.to_lower()
+			t += c
+	_name_edit.text = t
+	_name_edit.caret_column = t.length()
+	_refresh()
+
+
+func _hide_kb() -> void:
+	if _kb != null:
+		_kb.visible = false
+	_name_edit.release_focus()
