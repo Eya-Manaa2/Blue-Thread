@@ -43,3 +43,8 @@
 - **Version navigateur** : rendu en pixels CSS (`allow_hidpi.web=false` : avant, un écran à 125-150 % calculait 1,5 à 2,3 fois plus de pixels), MSAA coupé, **ombres temps réel coupées** (ombre ronde sous les personnages à la place), fumées et poussière réduites.
 - Mima : plus aucun volume ajouté sur les joues ni le menton (seulement son vieux visage).
 - Fin : face à face (de trois-quarts, les deux visages visibles), réponse de Mima, **câlin**, puis côte à côte main dans la main face à l'océan.
+
+## 22/11 (13h) — plus aucune musique, seulement des oiseaux
+- Piano d'ambiance, nappes et petites mélodies (intro, fin de rivage, mort, fin du jeu) **supprimés**.
+- À la place : chants d'oiseaux synthétisés et variés — moineau, mésange (« ti-tu »), merle (phrase flûtée), serin/chardonneret (trille), rossignol (sifflets + trille), tourterelle (roucoulement doux). Rares et loin sur une côte polluée, plus nombreux et plus variés quand elle revit ; placés autour du joueur en 3D, volume bas.
+- Moments forts (fin de rivage, restauration, fin) : petit chœur d'oiseaux + vagues sourdes. Mort : seulement la respiration, les oiseaux se taisent quelques secondes.

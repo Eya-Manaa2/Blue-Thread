@@ -53,7 +53,12 @@ var s_chime: AudioStreamWAV
 var s_fail: AudioStreamWAV
 var s_hiss: AudioStreamWAV
 var s_machine: AudioStreamWAV
-var s_piano: AudioStreamWAV          # une note (Do5) jouée à différentes hauteurs
+var s_piano: AudioStreamWAV          # (inutilisé : plus de musique)
+var s_blackbird: Array = []          # merle : phrase flûtée
+var s_canary: Array = []             # serin / chardonneret : trille rapide
+var s_tit: Array = []                # mésange : « ti-tu ti-tu »
+var s_nightingale: Array = []        # rossignol : sifflets + trille
+var s_dove: Array = []               # tourterelle : roucoulement doux
 var s_pad_major: AudioStreamWAV
 var s_pad_minor: AudioStreamWAV
 var amb_hum: AudioStreamPlayer
@@ -67,9 +72,10 @@ const C5 := 523.25
 var _pool: Array = []
 var _pool_i: int = 0
 var _bird_timer: float = 3.0
+var _birds_on: bool = true
 ## Petite musique d'ambiance douce (arpèges de piano, ses propres lecteurs
 ## pour ne jamais couper les bruitages).
-var music_on: bool = true
+var music_on: bool = false           # (22/11) musique supprimée
 var _mus_pool: Array = []
 var _mus_pi: int = 0
 var _mus_t: float = 1.5
@@ -217,9 +223,13 @@ func _generate_all() -> void:
 	s_chime = _gen_chime()
 	s_fail = _gen_fail()
 	s_machine = _gen_machine()
-	s_piano = _gen_piano()
-	s_pad_major = _gen_pad([261.63, 329.63, 392.0, 523.25])
-	s_pad_minor = _gen_pad([220.0, 261.63, 329.63, 440.0])
+	# (22/11) plus AUCUNE musique (ni piano ni nappes) : seulement des sons
+	# naturels. Chants d'oiseaux variés, tous synthétisés ici.
+	s_blackbird = [_gen_blackbird(11), _gen_blackbird(23)]
+	s_canary = [_gen_canary(5), _gen_canary(17)]
+	s_tit = [_gen_tit(3), _gen_tit(9)]
+	s_nightingale = [_gen_nightingale(7)]
+	s_dove = [_gen_dove(2)]
 
 
 # --- Mer : vagues qui montent et se retirent, ressac écumeux ---
@@ -349,6 +359,116 @@ func _gen_chirp() -> AudioStreamWAV:
 			b[pos + j] = sin(ph * TAU) * sin(k * PI)
 		pos += ns + int(rng.randf_range(0.03, 0.07) * rate)
 	return _to_wav(_norm(b, 0.7), rate, false)
+
+
+# ------------------------------------------------------------
+#  CHANTS D'OISEAUX (synthèse : sifflets à hauteur glissante,
+#  vibrato, harmonique douce ; attaques et fins adoucies)
+# ------------------------------------------------------------
+## Ajoute une note sifflée (f0 -> f1, vibrato) dans le tampon b
+func _whistle(b: PackedFloat32Array, rate: int, t0: float, dur: float, f0: float, f1: float, amp: float, vib_f: float = 0.0, vib_a: float = 0.0, curve: float = 1.0) -> void:
+	var s0: int = int(t0 * rate)
+	var ns: int = int(dur * rate)
+	var ph: float = 0.0
+	for j in ns:
+		var i: int = s0 + j
+		if i >= b.size():
+			break
+		var k: float = float(j) / float(ns)
+		var t: float = float(j) / rate
+		var f: float = lerpf(f0, f1, pow(k, curve)) + vib_a * sin(TAU * vib_f * t)
+		ph = fposmod(ph + f / rate, 1.0)
+		var env: float = minf(1.0, k * 14.0) * minf(1.0, (1.0 - k) * 8.0)
+		b[i] += (sin(ph * TAU) + 0.12 * sin(2.0 * ph * TAU)) * env * amp
+
+
+## Merle : phrase flûtée, grave et chantante (5-8 notes)
+func _gen_blackbird(seed_v: int) -> AudioStreamWAV:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_v
+	var rate: int = HI
+	var b := _new_buf(2.2, rate)
+	var t: float = 0.05
+	var base: float = r.randf_range(1500.0, 1900.0)
+	for n in r.randi_range(5, 8):
+		var d: float = r.randf_range(0.09, 0.22)
+		var f0: float = base * r.randf_range(0.8, 1.5)
+		var f1: float = f0 * r.randf_range(0.75, 1.3)
+		_whistle(b, rate, t, d, f0, f1, r.randf_range(0.6, 1.0), r.randf_range(18.0, 32.0), r.randf_range(20.0, 70.0))
+		t += d + r.randf_range(0.02, 0.07)
+		if t > 1.7:
+			break
+	# petite fioriture aiguë finale
+	_whistle(b, rate, t, 0.12, base * 2.2, base * 1.7, 0.35, 40.0, 120.0)
+	return _to_wav(_norm(b, 0.7), rate, false)
+
+
+## Serin / chardonneret : trille rapide et pétillante
+func _gen_canary(seed_v: int) -> AudioStreamWAV:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_v
+	var rate: int = HI
+	var b := _new_buf(1.8, rate)
+	var t: float = 0.03
+	for part in 3:
+		var f_hi: float = r.randf_range(3600.0, 5200.0)
+		var f_lo: float = f_hi * r.randf_range(0.55, 0.8)
+		var rep_d: float = r.randf_range(0.035, 0.06)
+		for k in r.randi_range(5, 10):
+			_whistle(b, rate, t, rep_d * 0.8, f_hi, f_lo, 0.7, 0.0, 0.0, 0.6)
+			t += rep_d
+		t += r.randf_range(0.04, 0.1)
+		if t > 1.5:
+			break
+	return _to_wav(_norm(b, 0.55), rate, false)
+
+
+## Mésange : « ti-tu, ti-tu, ti-tu » (deux notes répétées)
+func _gen_tit(seed_v: int) -> AudioStreamWAV:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_v
+	var rate: int = HI
+	var b := _new_buf(1.4, rate)
+	var hi: float = r.randf_range(4200.0, 5000.0)
+	var lo: float = hi * r.randf_range(0.62, 0.72)
+	var t: float = 0.04
+	for k in r.randi_range(3, 4):
+		_whistle(b, rate, t, 0.09, hi, hi * 0.97, 0.8)
+		_whistle(b, rate, t + 0.12, 0.11, lo, lo * 0.95, 0.75)
+		t += 0.3
+	return _to_wav(_norm(b, 0.55), rate, false)
+
+
+## Rossignol : longs sifflets qui montent puis trille grave
+func _gen_nightingale(seed_v: int) -> AudioStreamWAV:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_v
+	var rate: int = HI
+	var b := _new_buf(2.4, rate)
+	var t: float = 0.05
+	for k in 3:
+		var f: float = r.randf_range(1700.0, 2300.0)
+		_whistle(b, rate, t, 0.28, f, f * 1.08, 0.5 + 0.15 * k, 6.0, 15.0, 1.0)
+		t += 0.36
+	for k in 12:
+		_whistle(b, rate, t, 0.04, 2600.0, 1600.0, 0.7, 0.0, 0.0, 0.5)
+		t += 0.052
+	_whistle(b, rate, t + 0.05, 0.2, 3200.0, 2400.0, 0.5, 30.0, 90.0)
+	return _to_wav(_norm(b, 0.6), rate, false)
+
+
+## Tourterelle : roucoulement doux « hou-houuu-hou »
+func _gen_dove(seed_v: int) -> AudioStreamWAV:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_v
+	var rate: int = LO
+	var b := _new_buf(2.2, rate)
+	var f: float = r.randf_range(480.0, 560.0)
+	var t: float = 0.05
+	for d in [0.22, 0.5, 0.3]:
+		_whistle(b, rate, t, float(d), f * 1.05, f * 0.9, 0.9, 5.0, 12.0)
+		t += float(d) + 0.12
+	return _to_wav(_norm(b, 0.5), rate, false)
 
 
 # --- Mouette : deux cris « kiaou » ---
@@ -731,28 +851,52 @@ func _gen_pad(freqs: Array) -> AudioStreamWAV:
 	return _to_wav(_norm(b, 0.4), rate, false)
 
 
-func _music_tick(r: float, delta: float) -> void:
-	if not music_on:
+## Un oiseau chante quelque part autour du joueur
+func _bird_song(r: float, around: Vector3) -> void:
+	var pool: Array = [s_chirps]
+	if r > 0.2:
+		pool.append(s_tit)
+	if r > 0.35:
+		pool.append(s_blackbird)
+		pool.append(s_dove)
+	if r > 0.55:
+		pool.append(s_canary)
+		pool.append(s_nightingale)
+		pool.append(s_blackbird)
+	var set_a: Array = pool[rng.randi_range(0, pool.size() - 1)]
+	var snd: AudioStream = set_a[rng.randi_range(0, set_a.size() - 1)]
+	var vol: float = lerpf(-17.0, -11.0, r)
+	if set_a == s_dove:
+		vol -= 3.0
+	var pitch: float = rng.randf_range(0.94, 1.06)
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		_play(snd, vol - 3.0, pitch)        # écrans 2D (menu, intro, carte)
 		return
-	_mus_t -= delta
-	if _mus_t > 0.0:
-		return
-	_mus_t += MUSIC_STEP
-	var n: int = MUSIC[_mus_i % MUSIC.size()]
-	_mus_i += 1
-	if n <= -99:
-		return
-	var p: AudioStreamPlayer = _mus_pool[_mus_pi]
-	_mus_pi = (_mus_pi + 1) % _mus_pool.size()
-	p.stream = s_piano
-	p.pitch_scale = pow(2.0, float(n) / 12.0)
-	p.volume_db = lerpf(-25.0, -21.0, r)
-	p.play()
+	var c: Vector3 = cam.global_position if around == Vector3.ZERO else around
+	var a: float = rng.randf_range(0.0, TAU)
+	var d: float = rng.randf_range(5.0, 13.0)
+	_play_3d(snd, c + Vector3(cos(a) * d, rng.randf_range(3.0, 7.0), sin(a) * d), vol, pitch, 7.0)
+
+
+## Petit chœur d'oiseaux (fin de rivage, restauration, fin du jeu)
+func birds_chorus(n: int = 4, vol: float = -12.0) -> void:
+	var sets: Array = [s_blackbird, s_canary, s_tit, s_chirps, s_nightingale]
+	for i in n:
+		var set_a: Array = sets[i % sets.size()]
+		var snd: AudioStream = set_a[rng.randi_range(0, set_a.size() - 1)]
+		var p: float = rng.randf_range(0.95, 1.05)
+		_later(0.15 + i * rng.randf_range(0.45, 0.8), func(): _play(snd, vol - rng.randf_range(0.0, 4.0), p))
+
+
+func _music_tick(_r: float, _delta: float) -> void:
+	pass         # (22/11) plus de musique : seulement des sons naturels
 
 
 ## Coupe / relance la petite musique (l'intro a ses propres sons).
 func set_music(on: bool) -> void:
-	music_on = on
+	music_on = false
+	_birds_on = on      # l'intro gère ses propres oiseaux
 	if not on:
 		for p in _mus_pool:
 			(p as AudioStreamPlayer).stop()
@@ -816,13 +960,14 @@ func update(r: float, ch: float, ppos: Vector3, delta: float) -> void:
 			var cpos: Vector3 = ppos + Vector3(rng.randf_range(-20.0, 20.0), 2.0, rng.randf_range(10.0, 25.0))
 			_play_3d(s_creak, cpos, -18.0, rng.randf_range(0.8, 1.1), 10.0)
 
-	# Les moineaux reviennent sur les toits
-	if r > 0.12:
+	# Les oiseaux : rares sur la côte polluée, de plus en plus nombreux et
+	# variés quand elle revit (moineau, mésange, merle, serin, rossignol,
+	# tourterelle). Aucune musique.
+	if _birds_on:
 		_bird_timer -= delta
 		if _bird_timer <= 0.0:
-			_bird_timer = lerpf(9.0, 2.5, r) * rng.randf_range(0.7, 1.4)
-			var pos: Vector3 = ppos + Vector3(rng.randf_range(-7.0, 7.0), rng.randf_range(4.0, 8.0), rng.randf_range(-12.0, 6.0))
-			_play_3d(s_chirps[rng.randi_range(0, s_chirps.size() - 1)], pos, -14.0, rng.randf_range(0.85, 1.2), 6.0)
+			_bird_timer = lerpf(11.0, 2.4, r) * rng.randf_range(0.7, 1.4)
+			_bird_song(r, ppos)
 	# Les mouettes au-dessus de la mer
 	if r > 0.55:
 		_gull_timer -= delta
@@ -956,29 +1101,20 @@ func machine() -> void:
 
 ## Mort : respiration qui ralentit, accord mineur, notes lentes
 func death() -> void:
-	set_music(false)
-	_later(8.0, func(): set_music(true))
+	_birds_on = false
+	_later(8.0, func(): _birds_on = true)
 	_play(s_breath, -12.0, 0.85)
 	_later(2.4, func(): _play(s_breath, -16.0, 0.7))
-	_pad(false, -12.0)
-	_note(-3.0, -10.0, 1.2)      # La
-	_note(-5.0, -11.0, 2.4)      # Sol
-	_note(-9.0, -12.0, 3.6)      # Mi
 
 
 ## Rivage terminé : courte phrase pleine d'espoir
 func hopeful() -> void:
-	_pad(true, -12.0)
-	_note(-12.0, -10.0, 0.0)
-	_note(-8.0, -10.0, 0.25)
-	_note(-5.0, -10.0, 0.5)
-	_note(0.0, -9.0, 0.8)
-	_note(4.0, -11.0, 1.2)
+	birds_chorus(4, -12.0)
 
 
 ## Restauration de l'océan : nappe qui monte, vagues, oiseaux
 func restore() -> void:
-	_pad(true, -10.0)
+	birds_chorus(5, -11.0)
 	_play(s_wave, -8.0, 1.0)
 	_later(1.5, func(): _play(s_wave, -10.0, 0.9))
 	milestone()
@@ -996,7 +1132,6 @@ func intro_cue(kind: String) -> void:
 		"industrial":
 			_play_for(s_hum, -20.0, 1.0, 7.0)
 			_play(s_wave, -14.0, 0.7)
-			_pad(false, -18.0)
 		"boy":
 			for k in 4:
 				_later(k * 0.45, func(): _play(s_steps[k % s_steps.size()], -10.0, 0.8))
@@ -1005,27 +1140,18 @@ func intro_cue(kind: String) -> void:
 			_later(2.6, func(): _play(s_beep, -10.0))
 			_later(3.4, func(): _play(s_creak, -14.0, 0.8))
 		"room":
-			_note(-5.0, -13.0, 0.2)
-			_note(-1.0, -13.0, 1.0)
-			_note(2.0, -14.0, 1.8)
-			_note(0.0, -14.0, 2.8)
+			_later(0.8, func(): _play(s_chirps[1], -22.0, 0.95))   # un moineau, loin, derrière la fenêtre
 		"flashback":
 			_play(s_wave, -10.0, 1.0)
-			_note(4.0, -12.0, 0.1)
-			_note(7.0, -13.0, 0.9)
+			_play(s_blackbird[0], -13.0)
+			_later(1.2, func(): _play(s_canary[0], -15.0))
+			_later(1.6, func(): _play(s_gull, -20.0))
 			_later(0.6, func(): _play(s_chirps[0], -12.0, 1.1))
 		"promise":
-			_pad(true, -12.0)
-			_note(-12.0, -11.0, 0.3)
-			_note(-5.0, -11.0, 0.9)
-			_note(0.0, -10.0, 1.5)
-			_note(4.0, -10.0, 2.2)
+			_later(1.0, func(): _play(s_blackbird[1], -16.0))
 		"mission":
-			_pad(true, -16.0)
-			_note(-12.0, -14.0, 0.4)
-			_note(-5.0, -14.0, 1.4)
-			_note(0.0, -14.0, 2.4)
+			_play(s_wave, -16.0, 0.9)
+			_later(2.0, func(): _play(s_tit[0], -17.0))
 		"title":
-			_note(7.0, -11.0, 0.1)
-			_note(12.0, -12.0, 0.6)
+			birds_chorus(3, -14.0)
 			_play(s_wave, -14.0, 1.2)
