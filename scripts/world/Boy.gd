@@ -42,6 +42,12 @@ func _build_boy() -> void:
 	var iris := Mats.mat(Color(0.36, 0.22, 0.10), 0.3)
 	var black := Mats.mat(Color(0.03, 0.02, 0.02), 0.2)
 	var bag := Mats.mat(Color(0.30, 0.29, 0.22), 0.9)
+	if String(av.get("outfit", "")) == "dengri":
+		# dengri tunisien : veste et pantalon de travail bleu indigo
+		jacket = Mats.mat(Color(0.15, 0.26, 0.52), 0.9, 0.0, 0.18)
+		jacket_lt = Mats.mat(Color(0.24, 0.37, 0.64), 0.9, 0.0, 0.18)
+		pants = Mats.mat(Color(0.12, 0.20, 0.42), 0.92, 0.0, 0.15)
+		shirt = Mats.mat(Color(0.93, 0.92, 0.88), 0.9)
 
 	# ---------------- jambes (pivot à la hanche)
 	_leg_l = Node3D.new()
@@ -187,6 +193,26 @@ func _build_hair(style: String, hair: Material, hair_hi: Material, girl: bool) -
 		return
 	# calotte commune
 	Mats.mi(Mats.sphere(0.318, -1.0, 28), hair, Vector3(0, 0.33, 0.035), head, Vector3.ZERO, Vector3(1.0, 0.86, 1.02))
+	if style == "chechia":
+		# chéchia tunisienne : bonnet de feutre rouge + gland noir
+		var felt := Mats.mat(Color(0.74, 0.07, 0.08), 0.95, 0.0, 0.2)
+		var felt_dk := Mats.mat(Color(0.58, 0.05, 0.06), 0.95)
+		var silk := Mats.mat(Color(0.05, 0.04, 0.04), 0.6)
+		var ch := Node3D.new()
+		ch.position = Vector3(0, 0.575, 0.04)
+		ch.rotation_degrees = Vector3(-7, 0, 3)
+		head.add_child(ch)
+		Mats.mi(Mats.cyl(0.235, 0.285, 0.22, 32), felt, Vector3.ZERO, ch)
+		Mats.mi(Mats.cyl(0.236, 0.236, 0.012, 32), felt_dk, Vector3(0, 0.111, 0), ch)
+		Mats.mi(Mats.torus(0.27, 0.295, 32), felt_dk, Vector3(0, -0.1, 0), ch)
+		Mats.mi(Mats.cyl(0.03, 0.03, 0.025, 12), silk, Vector3(0, 0.12, 0), ch)
+		var tassel := Mats.bezier(Vector3(0, 0.125, 0), Vector3(0.02, 0.17, 0.12), Vector3(0.05, 0.12, 0.22), Vector3(0.07, 0.0, 0.25), 12)
+		Mats.mi(Mats.tube(tassel, 0.018, 6), silk, Vector3.ZERO, ch)
+		Mats.merge(ch)
+		# cheveux courts visibles sous la chéchia
+		for sx in [-1.0, 1.0]:
+			Mats.mi(Mats.sphere(0.09), hair, Vector3(0.26 * sx, 0.36, 0.06), head, Vector3.ZERO, Vector3(0.6, 1.0, 1.2))
+		return
 	if style == "short_curly" or style == "curly":
 		var n: int = 46 if style == "curly" else 30
 		var spread: float = 0.36 if style == "curly" else 0.31

@@ -55,3 +55,8 @@
 - Le nom devient **facultatif** : champ vide -> « Keeper ». Un avatar est présélectionné, START est utilisable tout de suite.
 - Le champ du nom commence **toujours vide** (avant, le nom du joueur précédent enregistré sur l'appareil, ex. « Nour », restait écrit).
 - Testé dans Godot (clavier forcé pour le test) : saisie, effacement, OK, START avec nom vide -> « KEEPER: KEEPER » dans le HUD.
+
+## 22/11 (13h35) — avatars
+- Plus aucune étiquette sous les avatars (garçon / fille, couleur de peau, cheveux) : seulement les personnages.
+- **Nouvel avatar au milieu** : garçon en **dengri** tunisien (veste et pantalon de travail bleu indigo, chemise claire) avec la **chéchia rouge** (feutre rouge, bord foncé, gland noir). Ordre affiché : 0, 1, 2, **6**, 3, 4, 5 (`GameData.AVATAR_ORDER`) ; les identifiants existants ne changent pas (sauvegardes compatibles).
+- Sélection : clic / toucher, flèches gauche-droite ou touches 1 à 7 dans l'ordre affiché. Vérifié dans Godot (aperçu + en jeu à Gabès).

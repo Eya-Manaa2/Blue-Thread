@@ -19,7 +19,10 @@ const AVATARS := [
 	{"id": 3, "label": "Girl", "detail": "blonde", "girl": true, "skin": Color(0.94, 0.77, 0.63), "hair": Color(0.90, 0.74, 0.40), "style": "long"},
 	{"id": 4, "label": "Girl", "detail": "hijab", "girl": true, "skin": Color(0.80, 0.58, 0.43), "hair": Color(0.12, 0.38, 0.52), "style": "hijab"},
 	{"id": 5, "label": "Girl", "detail": "curly hair", "girl": true, "skin": Color(0.66, 0.45, 0.31), "hair": Color(0.16, 0.09, 0.05), "style": "curly"},
+	{"id": 6, "label": "Boy", "detail": "dengri + chechia", "girl": false, "skin": Color(0.74, 0.52, 0.37), "hair": Color(0.10, 0.07, 0.05), "style": "chechia", "outfit": "dengri"},
 ]
+## Ordre d'affichage des avatars (le garçon en dengri et chéchia rouge au milieu)
+const AVATAR_ORDER := [0, 1, 2, 6, 3, 4, 5]
 
 ## Types d'étapes de l'atelier (RecyclingPuzzle) :
 ##  place     : poser chaque objet RÉELLEMENT collecté dans la zone de travail

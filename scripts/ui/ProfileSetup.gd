@@ -17,7 +17,7 @@ signal confirmed(player_name: String, avatar: int)
 signal back
 
 const BoyScript := preload("res://scripts/world/Boy.gd")
-const CARD := Vector2(158, 190)
+const CARD := Vector2(140, 200)
 
 var _name_edit: LineEdit
 var _error: Label
@@ -88,8 +88,8 @@ func _ready() -> void:
 	var row := UiKit.hbox(12)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(row)
-	for av in GameData.AVATARS:
-		row.add_child(_make_card(int(av.id)))
+	for id in GameData.AVATAR_ORDER:
+		row.add_child(_make_card(int(id)))
 
 	var btns := UiKit.hbox(18)
 	btns.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -124,7 +124,7 @@ func _make_card(id: int) -> Control:
 	sel.shadow_size = 16
 	# carte = bouton (clic souris / toucher fiables), contenu non cliquable
 	var panel := Button.new()
-	panel.custom_minimum_size = Vector2(CARD.x + 16, CARD.y + 62)
+	panel.custom_minimum_size = Vector2(CARD.x + 16, CARD.y + 16)
 	panel.focus_mode = Control.FOCUS_NONE
 	panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	for st in ["normal", "hover", "pressed", "focus", "disabled"]:
@@ -178,39 +178,44 @@ func _make_card(id: int) -> Control:
 	cam.transform = Transform3D(Basis(), Vector3(0, 1.05, -3.7)).looking_at(Vector3(0, 0.95, 0), Vector3.UP)
 	cam.current = true
 
-	var l1 := UiKit.label(String(av.label).to_upper(), 17, UiKit.PAPER, "black")
-	l1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(l1)
-	var l2 := UiKit.label(String(av.detail), 14, UiKit.MUTED, "bold")
-	l2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(l2)
-	_cards.append({"panel": panel, "vp": vp, "boy": boy, "cam": cam, "n": n, "s": sel})
+	# (22/11) plus aucune étiquette (garçon / fille / couleur de peau...) :
+	# seulement les avatars
+	_cards.append({"id": id, "panel": panel, "vp": vp, "boy": boy, "cam": cam, "n": n, "s": sel})
 	return panel
 
 
-## Clavier : flèches gauche / droite ou touches 1 à 6 pour choisir l'avatar
+## Clavier : flèches gauche / droite ou touches 1 à 7 (ordre affiché)
 func _unhandled_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
 	var k: int = e.physical_keycode
-	if k >= KEY_1 and k <= KEY_6:
-		_select(k - KEY_1)
+	var order: Array = GameData.AVATAR_ORDER
+	var pos: int = order.find(_selected)
+	if k >= KEY_1 and k < KEY_1 + order.size() and not _name_edit.has_focus():
+		_select(int(order[k - KEY_1]))
 	elif k == KEY_RIGHT and not _name_edit.has_focus():
-		_select((maxi(_selected, -1) + 1) % _cards.size())
+		_select(int(order[(pos + 1) % order.size()]))
 	elif k == KEY_LEFT and not _name_edit.has_focus():
-		_select((_selected - 1 + _cards.size()) % _cards.size() if _selected >= 0 else 0)
+		_select(int(order[(pos - 1 + order.size()) % order.size()]) if pos >= 0 else int(order[0]))
 	else:
 		return
 	get_viewport().set_input_as_handled()
 
 
+func _card(id: int) -> Dictionary:
+	for c in _cards:
+		if int(c.id) == id:
+			return c
+	return {}
+
+
 func _select(id: int) -> void:
-	if id < 0 or id >= _cards.size():
+	if _card(id).is_empty():
 		return
 	_selected = id
 	for i in _cards.size():
 		var c: Dictionary = _cards[i]
-		var on: bool = i == id
+		var on: bool = int(c.id) == id
 		var btn: Button = c.panel
 		for st in ["normal", "hover", "pressed", "focus", "disabled"]:
 			btn.add_theme_stylebox_override(st, c.s if on else c.n)
@@ -259,7 +264,7 @@ func _try_start() -> void:
 func _process(delta: float) -> void:
 	_t += delta
 	if _selected >= 0 and not _busy:
-		var boy: Node3D = _cards[_selected].boy
+		var boy: Node3D = _card(_selected).boy
 		boy.rotation.y = sin(_t * 0.9) * 0.6
 
 
