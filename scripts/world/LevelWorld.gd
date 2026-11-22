@@ -50,7 +50,7 @@ const TINTS := {
 	"skhira": {"sky_top": Color(0.27, 0.24, 0.30), "sky_hor": Color(0.78, 0.55, 0.50), "fog": Color(0.56, 0.46, 0.48),
 		"sun": Color(1.0, 0.66, 0.48), "sand": Color(0.64, 0.54, 0.42), "wet": Color(0.33, 0.28, 0.22), "pol": Color(0.18, 0.17, 0.18)},
 	"sidi_mansour": {"sky_top": Color(0.38, 0.34, 0.26), "sky_hor": Color(0.90, 0.72, 0.44), "fog": Color(0.74, 0.62, 0.44),
-		"sun": Color(1.0, 0.78, 0.50), "sand": Color(0.78, 0.66, 0.48), "wet": Color(0.42, 0.34, 0.24), "pol": Color(0.26, 0.24, 0.22)},
+		"sun": Color(1.0, 0.78, 0.50), "sand": Color(0.66, 0.55, 0.40), "wet": Color(0.42, 0.34, 0.24), "pol": Color(0.26, 0.24, 0.22)},
 }
 
 
@@ -706,6 +706,13 @@ func _process(delta: float) -> void:
 			var flap: float = sin(_t * 6.0 + i) * 0.5
 			node.get_node("WL").rotation.z = flap
 			node.get_node("WR").rotation.z = -flap
+	if camera != null:
+		var cam_p: Vector3 = camera.global_position
+		for g in _green:
+			var n3: Node3D = g[0]
+			if n3.scale.x > 0.02:
+				var near: bool = Vector2(n3.global_position.x - cam_p.x, n3.global_position.z - cam_p.z).length() < 6.5 and n3.global_position.z < cam_p.z + 1.0
+				n3.visible = not near
 	if camera != null and matte != null:
 		var cp: Vector3 = camera.global_position
 		matte.position.x = cp.x
@@ -731,7 +738,9 @@ func _apply(force: bool) -> void:
 	env.adjustment_saturation = lerpf(0.82, 1.12, k)
 	env.adjustment_contrast = lerpf(1.08, 1.04, k)
 	sun.light_color = Color(t.sun).lerp(Color(1.0, 0.96, 0.88), k)
-	sun.light_energy = lerpf(1.15, 1.45, k)
+	sun.light_energy = lerpf(1.15, 1.2, k)
+	env.tonemap_exposure = lerpf(1.0, 0.86, k)
+	env.ambient_light_energy = lerpf(0.85, 0.7, k)
 	sun.rotation_degrees.x = lerpf(-14.0, -38.0, k)
 	sea_mat.set_shader_parameter("restoration", k)
 	sea_mat.set_shader_parameter("sky_col", sky_mat.sky_horizon_color)

@@ -18,4 +18,5 @@ Légende : OK = vu fonctionner dans Godot 4.7.2 sur le PC ; À TESTER = écrit m
 | Aperçu de restauration 0/33/67/100 | À TESTER |
 | Migration SQL 002 appliquée dans Supabase | NON FAIT |
 | Export web + itch.io | NON FAIT |
+| Coupure réseau (4G/5G/Wi-Fi) : jeu en pause + écran CONNECTION LOST, reprise auto au retour du réseau | À TESTER (code ajouté le 22/11) |
 | Preuve 5G | NON FAIT (capture du téléphone requise ; rien n'est simulé) |

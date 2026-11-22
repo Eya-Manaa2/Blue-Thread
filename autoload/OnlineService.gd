@@ -55,9 +55,14 @@ var _is_web: bool = false
 var _js_win = null
 var _cb_submit = null
 var _cb_poll = null
+var _cb_net = null
+var browser_offline: bool = false   # navigateur : événement « offline » (coupure 4G/5G/Wi-Fi)
 
 
 func _ready() -> void:
+	# Doit continuer à vérifier le réseau même quand le jeu est en pause
+	# (sinon on ne détecterait jamais le retour de la connexion).
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	session_id = "player-%06x" % rng.randi_range(0, 0xFFFFFF)
@@ -68,6 +73,15 @@ func _ready() -> void:
 		_js_win = JavaScriptBridge.get_interface("window")
 		_cb_submit = JavaScriptBridge.create_callback(_on_js_submit)
 		_cb_poll = JavaScriptBridge.create_callback(_on_js_poll)
+		_cb_net = JavaScriptBridge.create_callback(_on_js_net)
+		JavaScriptBridge.eval("""
+window.btNet = function (cb) {
+  window.addEventListener('offline', function () { cb(false); });
+  window.addEventListener('online', function () { cb(true); });
+  return navigator.onLine;
+};""", true)
+		var on_line = _js_win.btNet(_cb_net)
+		browser_offline = not bool(on_line)
 
 	_http_submit = HTTPRequest.new()
 	_http_submit.timeout = 8.0
@@ -228,6 +242,16 @@ func poll_now() -> void:
 	if err != OK:
 		_poll_busy = false
 		last_error = "Requête impossible (code %d)" % err
+		_set_online(false)
+
+
+func _on_js_net(args: Array) -> void:
+	var up: bool = bool(args[0])
+	browser_offline = not up
+	if up:
+		poll_now()
+	else:
+		last_error = "Navigateur hors ligne (réseau coupé)"
 		_set_online(false)
 
 

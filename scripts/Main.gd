@@ -18,6 +18,7 @@ const LevelScript := preload("res://scripts/game/LevelController.gd")
 const EndingScript := preload("res://scripts/game/Ending.gd")
 const PreviewScript := preload("res://scripts/game/RestorationPreview.gd")
 const SfxScript := preload("res://scripts/sfx.gd")
+const NetGuardScript := preload("res://scripts/ui/NetGuard.gd")
 
 var current: Node = null
 var sfx: Node
@@ -34,6 +35,8 @@ func _ready() -> void:
 	sfx.start_ambience()
 
 	add_child((load(HUD_SCENE) as PackedScene).instantiate())
+	# Jeu connecté : sans Internet, le jeu se bloque jusqu'au retour du réseau
+	add_child(NetGuardScript.new())
 
 	var tl := CanvasLayer.new()
 	tl.layer = 40
